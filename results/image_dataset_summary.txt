@@ -1,0 +1,58 @@
+============================================================
+=== ISL_CSLRT IMAGE & FRAME DATASET ANALYSIS REPORT ===
+============================================================
+
+1. OVERALL DATASET SUMMARY:
+------------------------------------------------------------
+Total Images Across Corpus   : 19899 images
+  - Word-level images        : 1036 images (Frames_Word_Level)
+  - Sentence-level images    : 18863 images (Frames_Sentence_Level)
+
+2. FRAMES_WORD_LEVEL ANALYSIS:
+------------------------------------------------------------
+Total Word Classes           : 114 classes
+Total Word Frame Images      : 1036 images
+Min Images per Word Class    : 2
+Max Images per Word Class    : 110
+Average Images per Word Class: 9.09
+Sample Word Classes          : A LOT, ABUSE, AFRAID, AGREE, ALL, ANGRY, ANYTHING, APPRECIATE, BAD, BEAUTIFUL
+Format & Naming Convention   : UPPERCASE_WITH_UNDERSCORES (e.g. 'HELLO_HI', 'DISAPPOINTED')
+
+3. FRAMES_SENTENCE_LEVEL ANALYSIS:
+------------------------------------------------------------
+Total Sentence Classes       : 97 active sentence classes
+Total Video Sequences        : 663 sequences
+Total Sentence Frame Images  : 18863 images
+Min Images per Sentence Class: 46
+Max Images per Sentence Class: 519
+Average Images per Sent Class: 194.46
+Min Frames per Video Sequence: 6 frames
+Max Frames per Video Sequence: 147 frames
+Average Frames per Sequence  : 28.45 frames
+Sample Sentence Classes      : He is going into the room, This place is beautiful, are you free today, are you hiding something, bring water for me
+Format & Naming Convention   : lowercase natural English sentences
+
+4. LABEL MAPPING & VOCABULARY COMPATIBILITY:
+------------------------------------------------------------
+Original Corpus Sentences    : 101 classes
+Sentence Frames Directories  : 97 active classes
+Active Training Model Classes: 97 classes (100% exact match with Frames_Sentence_Level)
+Sentence Corpus Unique Words : 182 unique words
+Word-Level Vocabulary Match  : 94 / 182 sentence words (51.6% coverage)
+
+5. ARCHITECTURAL EVALUATION & RECOMMENDATION:
+------------------------------------------------------------
+Evaluated Architectures:
+  Option A: Image-only CNN
+    - Verdict: NOT RECOMMENDED
+    - Reason : Sign language is fundamentally temporal; static 2D images fail to capture dynamic gesture motion. Frames_Word_Level has only ~9 images/class, leading to extreme underfitting.
+
+  Option B: CNN + temporal BiLSTM/GRU
+    - Verdict: CONDITIONALLY VIABLE BUT COMPUTATIONALLY HEAVY
+    - Reason : Processing 18,863 raw RGB frames through a 2D CNN per epoch requires heavy GPU resources and is slow on CPU.
+
+  Option C: CNN + MediaPipe Landmarks + BiLSTM/GRU Fusion
+    - Verdict: STRONGLY RECOMMENDED (BEST ARCHITECTURE)
+    - Reason : Fusing lightweight spatial CNN feature embeddings (or hand/face cropped ROIs) with explicit 126-D MediaPipe 3D landmark keypoints into a dual-branch temporal BiLSTM/GRU leverages both visual texture/hand orientation AND invariant 3D geometric trajectory motion.
+
+============================================================

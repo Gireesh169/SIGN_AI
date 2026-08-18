@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# PyTorch models
+*.pth
+*.pt
+
+# NumPy generated data
+*.npy
+*.npz
+
+# Videos
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Uploaded files
+static/uploads/
+
+# Generated datasets
+data/*.csv
+data/*.json
+
+# Generated results
+results/*.png

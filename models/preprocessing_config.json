@@ -1,0 +1,10 @@
+{
+  "winning_feature_representation": "252D (Position + Velocity)",
+  "winning_feature_dim": 252,
+  "sequence_length": 30,
+  "hand_ordering": "Left (0:63), Right (63:126)",
+  "normalization": "Wrist-centered (Subtract Landmark 0) & Palm scale normalized (Divide by wrist-to-MCP9 distance)",
+  "include_velocity": true,
+  "include_acceleration": false,
+  "winning_model_path": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/models/best_model_252.pth"
+}

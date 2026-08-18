@@ -1,0 +1,248 @@
+{
+  "exp_B_252d": {
+    "test_accuracy": 0.36082474226804123,
+    "top5_accuracy": 0.7010309100151062,
+    "macro_f1": 0.32027491408934705,
+    "weighted_f1": 0.32027491408934705,
+    "val_accuracy": 0.31958762886597936,
+    "best_val_accuracy": 0.31958762886597936,
+    "train_val_gap": 0.4762886597938144,
+    "unseen_20_acc": 10.0,
+    "model_path": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/models/best_model_252.pth"
+  },
+  "exp_C_378d": {
+    "test_accuracy": 0.27835051546391754,
+    "top5_accuracy": 0.6597937941551208,
+    "macro_f1": 0.22061855670103092,
+    "weighted_f1": 0.22061855670103092,
+    "val_accuracy": 0.30927835051546393,
+    "best_val_accuracy": 0.31958762886597936,
+    "train_val_gap": 0.4193814432989691,
+    "unseen_20_acc": 5.0,
+    "model_path": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/models/best_model_378.pth"
+  },
+  "winning_representation": "252D (Position + Velocity)",
+  "winning_model_path": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/models/best_model_252.pth",
+  "unseen_test_log": [
+    {
+      "sample_num": 1,
+      "video_name": "pour (2).MP4",
+      "expected": "pour some more water into the glass",
+      "pred_B_252d": "let him take time",
+      "conf_252": 71.20823860168457,
+      "match_252": false,
+      "pred_C_378d": "let him take time",
+      "conf_378": 54.897403717041016,
+      "match_378": false
+    },
+    {
+      "sample_num": 2,
+      "video_name": "MVI_6721.MP4",
+      "expected": "i am really grateful",
+      "pred_B_252d": "i am not really sure",
+      "conf_252": 41.933128237724304,
+      "match_252": false,
+      "pred_C_378d": "i enjoyed a lot",
+      "conf_378": 31.857827305793762,
+      "match_378": false
+    },
+    {
+      "sample_num": 3,
+      "video_name": "welcome (5).MP4",
+      "expected": "you are welcome",
+      "pred_B_252d": "where are you from",
+      "conf_252": 82.33006000518799,
+      "match_252": false,
+      "pred_C_378d": "where are you from",
+      "conf_378": 63.642418384552,
+      "match_378": false
+    },
+    {
+      "sample_num": 4,
+      "video_name": "go and sleep.mp4",
+      "expected": "go and sleep",
+      "pred_B_252d": "do you need something",
+      "conf_252": 59.45634841918945,
+      "match_252": false,
+      "pred_C_378d": "do you need something",
+      "conf_378": 29.489940404891968,
+      "match_378": false
+    },
+    {
+      "sample_num": 5,
+      "video_name": "happened (3).MP4",
+      "expected": "what happened",
+      "pred_B_252d": "what do you do",
+      "conf_252": 62.840789556503296,
+      "match_252": false,
+      "pred_C_378d": "what do you do",
+      "conf_378": 30.668312311172485,
+      "match_378": false
+    },
+    {
+      "sample_num": 6,
+      "video_name": "what you want (1).MP4",
+      "expected": "what you want",
+      "pred_B_252d": "how dare you",
+      "conf_252": 20.474787056446075,
+      "match_252": false,
+      "pred_C_378d": "do you need something",
+      "conf_378": 17.253950238227844,
+      "match_378": false
+    },
+    {
+      "sample_num": 7,
+      "video_name": "serve (2).MP4",
+      "expected": "serve the food",
+      "pred_B_252d": "could you please talk slower",
+      "conf_252": 12.121681869029999,
+      "match_252": false,
+      "pred_C_378d": "had your food",
+      "conf_378": 25.609755516052246,
+      "match_378": false
+    },
+    {
+      "sample_num": 8,
+      "video_name": "sitting.MP4",
+      "expected": "i am sitting in the class",
+      "pred_B_252d": "i am sitting in the class",
+      "conf_252": 29.027247428894043,
+      "match_252": true,
+      "pred_C_378d": "i am sitting in the class",
+      "conf_378": 28.885948657989502,
+      "match_378": true
+    },
+    {
+      "sample_num": 9,
+      "video_name": "do me a favour.mp4",
+      "expected": "do me a favour",
+      "pred_B_252d": "do not hurt me",
+      "conf_252": 36.445727944374084,
+      "match_252": false,
+      "pred_C_378d": "i need water",
+      "conf_378": 35.25986075401306,
+      "match_378": false
+    },
+    {
+      "sample_num": 10,
+      "video_name": "MVI_6503.MP4",
+      "expected": "He is going into the room",
+      "pred_B_252d": "No need to worry dont worry",
+      "conf_252": 24.3755504488945,
+      "match_252": false,
+      "pred_C_378d": "let him take time",
+      "conf_378": 36.546581983566284,
+      "match_378": false
+    },
+    {
+      "sample_num": 11,
+      "video_name": "i am (age) (2).MP4",
+      "expected": "i am (age)",
+      "pred_B_252d": "how old are you",
+      "conf_252": 78.80631685256958,
+      "match_252": false,
+      "pred_C_378d": "how old are you",
+      "conf_378": 64.74725604057312,
+      "match_378": false
+    },
+    {
+      "sample_num": 12,
+      "video_name": "wear the shirt (2).mp4",
+      "expected": "wear the shirt",
+      "pred_B_252d": "turn on light turn off light",
+      "conf_252": 33.43300521373749,
+      "match_252": false,
+      "pred_C_378d": "turn on light turn off light",
+      "conf_378": 36.3041877746582,
+      "match_378": false
+    },
+    {
+      "sample_num": 13,
+      "video_name": "i can not help you there.mp4",
+      "expected": "i can not help you there",
+      "pred_B_252d": "i do not agree",
+      "conf_252": 56.218814849853516,
+      "match_252": false,
+      "pred_C_378d": "i do not agree",
+      "conf_378": 19.125111401081085,
+      "match_378": false
+    },
+    {
+      "sample_num": 14,
+      "video_name": "hi how are you (7).MP4",
+      "expected": "hi how are you",
+      "pred_B_252d": "he she is my friend",
+      "conf_252": 43.010133504867554,
+      "match_252": false,
+      "pred_C_378d": "do not take it to the heart",
+      "conf_378": 27.088677883148193,
+      "match_378": false
+    },
+    {
+      "sample_num": 15,
+      "video_name": "i am suffering from fever.mp4",
+      "expected": "i am suffering from fever",
+      "pred_B_252d": "i am in dilemma what to do",
+      "conf_252": 35.87346374988556,
+      "match_252": false,
+      "pred_C_378d": "serve the food",
+      "conf_378": 18.323835730552673,
+      "match_378": false
+    },
+    {
+      "sample_num": 16,
+      "video_name": "bring water for me (6).mp4",
+      "expected": "bring water for me",
+      "pred_B_252d": "i do not agree",
+      "conf_252": 26.645904779434204,
+      "match_252": false,
+      "pred_C_378d": "i am feeling bored",
+      "conf_378": 45.32150328159332,
+      "match_378": false
+    },
+    {
+      "sample_num": 17,
+      "video_name": "friend.MP4",
+      "expected": "he she is my friend",
+      "pred_B_252d": "take care of yourself",
+      "conf_252": 28.048083186149597,
+      "match_252": false,
+      "pred_C_378d": "i am not really sure",
+      "conf_378": 14.799290895462036,
+      "match_378": false
+    },
+    {
+      "sample_num": 18,
+      "video_name": "stubborn (4).MP4",
+      "expected": "do not be stubborn",
+      "pred_B_252d": "serve the food",
+      "conf_252": 56.89568519592285,
+      "match_252": false,
+      "pred_C_378d": "do not abuse him",
+      "conf_378": 31.95478618144989,
+      "match_378": false
+    },
+    {
+      "sample_num": 19,
+      "video_name": "why are you crying.mp4",
+      "expected": "why are you crying",
+      "pred_B_252d": "why are you crying",
+      "conf_252": 84.16250348091125,
+      "match_252": true,
+      "pred_C_378d": "what do you think",
+      "conf_378": 34.79401767253876,
+      "match_378": false
+    },
+    {
+      "sample_num": 20,
+      "video_name": "turn on.MP4",
+      "expected": "turn on light turn off light",
+      "pred_B_252d": "what did you tell him",
+      "conf_252": 43.34456026554108,
+      "match_252": false,
+      "pred_C_378d": "what did you tell him",
+      "conf_378": 14.32950645685196,
+      "match_378": false
+    }
+  ]
+}
