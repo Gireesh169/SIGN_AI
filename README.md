@@ -487,35 +487,9 @@ Future development plans include:
 
 ---
 
-## 18. Screenshots
 
-### Landing Page
-![Landing Page](screenshots/landing-page.png)
 
-### Room Creation
-![Room Creation](screenshots/create-room.png)
-
-### Teacher Dashboard
-![Teacher Dashboard](screenshots/teacher-dashboard.png)
-
-### Student Classroom
-![Student Classroom](screenshots/student-classroom.png)
-
-### Live Teacher Instruction
-![Live Teacher Instruction](screenshots/live-instruction.png)
-
-### Student Sign Detection
-![Student Sign Detection](screenshots/student-sign-detection.png)
-
-### Teacher Response Log
-![Teacher Response Log](screenshots/teacher-response-log.png)
-
-### Student Activity History
-![Student Activity History](screenshots/student-activity-history.png)
-
----
-
-## 19. API Documentation
+## 18. API Documentation
 
 ### REST API Endpoints
 
@@ -577,7 +551,7 @@ Future development plans include:
 
 ---
 
-## 20. Contributing
+## 19. Contributing
 
 Contributions are welcome! To contribute:
 
@@ -589,7 +563,7 @@ Contributions are welcome! To contribute:
 
 ---
 
-## 21. Team / Author
+## 20. Team / Author
 
 Developed by: **Gireesh and Team**
 
