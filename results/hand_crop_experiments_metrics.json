@@ -1,0 +1,24 @@
+{
+  "Exp_A_Motion_Baseline": {
+    "top1_acc": 0.09278350515463918,
+    "top5_acc": 0.35051546391752575,
+    "macro_f1": 0.06426116838487972,
+    "latency_ms": 0.39049522163941686,
+    "train_val_gap": 0.29838796461700706
+  },
+  "Exp_B_Visual_Crops_Only": {
+    "top1_acc": 0.010309278350515464,
+    "top5_acc": 0.041237113402061855,
+    "macro_f1": 0.0007363770250368188,
+    "latency_ms": 0.1017703223474247,
+    "train_val_gap": 0.02739814476034694
+  },
+  "Exp_C_Gated_Multimodal": {
+    "top1_acc": 0.14432989690721648,
+    "top5_acc": 0.4329896907216495,
+    "macro_f1": 0.09432989690721649,
+    "latency_ms": 0.5755670291861308,
+    "train_val_gap": 0.3595764371650561
+  },
+  "winning_architecture": "Exp C (Gated Multimodal)"
+}

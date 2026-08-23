@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Room | SIGN-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>🤟</span>
+            <a href="/" style="color: inherit; text-decoration: none;">SIGN-AI Classroom</a>
+        </div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+            <a href="/history">History</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 600px; margin-top: 2rem;">
+        <div class="glass-card">
+            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center;">👨‍🏫 Create Virtual Classroom</h2>
+            <p style="color: var(--text-muted); text-align: center; margin-bottom: 2rem;">Set up your classroom details to generate a unique room code for your students.</p>
+
+            <form action="/api/create_room" method="POST">
+                <div class="form-group">
+                    <label>Teacher Name *</label>
+                    <input type="text" name="teacher_name" class="form-control" placeholder="e.g. Prof. Sharma" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Classroom / Room Name *</label>
+                    <input type="text" name="room_name" class="form-control" placeholder="e.g. Computer Vision 101" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Subject *</label>
+                    <input type="text" name="subject" class="form-control" placeholder="e.g. CSE - Artificial Intelligence" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Description (Optional)</label>
+                    <textarea name="description" class="form-control" rows="3" placeholder="Brief description of the classroom topic..."></textarea>
+                </div>
+
+                <div class="form-group">
+                    <label>Maximum Students</label>
+                    <input type="number" name="max_students" class="form-control" value="30" min="1" max="100">
+                </div>
+
+                <div class="form-group">
+                    <label>Optional Password</label>
+                    <input type="password" name="password" class="form-control" placeholder="Leave blank for open access">
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 1rem; margin-top: 1rem;">🚀 Generate Room Code & Launch</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>

@@ -6,7 +6,8 @@ import time
 import numpy as np
 import cv2
 import mediapipe as mp
-from flask import Flask, render_template, request, jsonify, Response
+from flask import Flask, render_template, request, jsonify, Response, redirect, url_for
+from flask_socketio import SocketIO, emit, join_room as socket_join_room, leave_room as socket_leave_room
 from werkzeug.utils import secure_filename
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -15,197 +16,225 @@ from src.config import (
 )
 from src.realtime_engine import RealTimeInferenceEngine
 from src.video_inference import run_video_file_inference
+from src.database import ClassroomDatabase
+from src.conversation_memory import ConversationMemoryStore
 
 app = Flask(__name__)
+app.config['SECRET_KEY'] = 'sign_ai_classroom_secret_2026'
 app.config['UPLOAD_FOLDER'] = os.path.join(BASE_DIR, 'static', 'uploads')
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Global Real-Time Inference Engine & Camera Stream
-engine = None
-camera_capture = None
-latest_status = {
-    'hands_detected': 0,
-    'buffer_size': 0,
-    'buffer_capacity': 30,
-    'stable_sentence': 'Waiting for camera...',
-    'confidence': 0.0,
-    'is_speaking': False,
-    'fps': 0.0,
-    'inference_time_ms': 0.0
-}
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet')
+db = ClassroomDatabase()
+conversation_store = ConversationMemoryStore()
 
+@app.after_request
+def add_header(response):
+    response.headers['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
+
+# Global Real-Time Inference Engine
+engine = None
 def get_engine():
     global engine
     if engine is None:
         engine = RealTimeInferenceEngine()
     return engine
 
-def get_camera():
-    global camera_capture
-    if camera_capture is None or not camera_capture.isOpened():
-        for idx in range(4):
-            cap = cv2.VideoCapture(idx)
-            if cap.isOpened():
-                ret, tmp = cap.read()
-                if ret and tmp is not None:
-                    camera_capture = cap
-                    print(f"Successfully opened server-side computer camera index {idx}")
-                    break
-                cap.release()
-    return camera_capture
-
-def generate_mjpeg_stream():
-    global latest_status
-    eng = get_engine()
-    cap = get_camera()
-
-    mp_hands = mp.solutions.hands
-    mp_drawing = mp.solutions.drawing_utils
-
-    if cap is None or not cap.isOpened():
-        latest_status['stable_sentence'] = "Camera Hardware Unavailable"
-        blank = np.zeros((480, 640, 3), dtype=np.uint8)
-        cv2.putText(blank, "No Camera Hardware Found", (80, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-        _, jpeg = cv2.imencode('.jpg', blank)
-        yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-        return
-
-    with mp_hands.Hands(
-        static_image_mode=False,
-        max_num_hands=2,
-        min_detection_confidence=0.3,
-        min_tracking_confidence=0.3
-    ) as hands:
-        while cap.isOpened():
-            try:
-                ret, frame = cap.read()
-                if not ret or frame is None:
-                    time.sleep(0.01)
-                    continue
-
-                # 1. MediaPipe landmark extraction on UN-FLIPPED frame
-                rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = hands.process(rgb_frame)
-
-                display_frame = frame.copy()
-                if results.multi_hand_landmarks:
-                    for hand_landmarks in results.multi_hand_landmarks:
-                        mp_drawing.draw_landmarks(display_frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
-
-                # 2. Mirror flip display frame AFTER drawing landmarks for user view
-                display_frame = cv2.flip(display_frame, 1)
-
-                # 3. Process 252D ML inference engine safely (Exception guarded)
-                try:
-                    status = eng.process_frame(frame)
-                    latest_status.update(status)
-                except Exception as engine_err:
-                    print(f"[STREAM ENGINE ERROR]: {engine_err}")
-
-                # 4. Draw HUD Overlay on video stream
-                cv2.rectangle(display_frame, (0, 0), (display_frame.shape[1], 60), (15, 20, 25), -1)
-                cv2.putText(display_frame, f"Recognized: {latest_status['stable_sentence']}", (15, 30),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 120), 2, cv2.LINE_AA)
-                cv2.putText(display_frame, f"Confidence: {latest_status['confidence']}% | FPS: {latest_status['fps']} | Latency: {latest_status['inference_time_ms']}ms", (15, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.45, (200, 200, 200), 1, cv2.LINE_AA)
-
-                ret_code, jpeg = cv2.imencode('.jpg', display_frame)
-                if not ret_code:
-                    continue
-
-                yield (b'--frame\r\nContent-Type: image/jpeg\r\n\r\n' + jpeg.tobytes() + b'\r\n')
-            except Exception as stream_err:
-                print(f"[STREAM LOOP ERROR]: {stream_err}")
-                time.sleep(0.01)
-
+# =========================================================================
+# CLASSROOM PAGE ROUTES
+# =========================================================================
 @app.route('/')
-def index():
-    metrics_path = os.path.join(MODELS_DIR, 'velocity_experiment_metrics.json')
-    metrics = {}
-    if os.path.exists(metrics_path):
-        with open(metrics_path, 'r') as f:
-            metrics = json.load(f)
-    return render_template('index.html', metrics=metrics)
+def index_page():
+    return render_template('index.html')
 
-@app.route('/video_feed')
-def video_feed():
-    return Response(generate_mjpeg_stream(), mimetype='multipart/x-mixed-replace; boundary=frame')
+@app.route('/create-room')
+def create_room_page():
+    return render_template('create_room.html')
 
-@app.route('/api/camera_status', methods=['GET'])
-def camera_status_endpoint():
-    global latest_status
-    return jsonify(latest_status)
+@app.route('/api/create_room', methods=['POST'])
+def create_room_endpoint():
+    teacher_name = request.form.get('teacher_name')
+    room_name = request.form.get('room_name')
+    subject = request.form.get('subject')
+    description = request.form.get('description', '')
+    max_students = int(request.form.get('max_students', 30))
+    password = request.form.get('password', '')
 
-@app.route('/api/process_frame', methods=['POST'])
-def process_frame_endpoint():
-    data = request.get_json()
-    if not data or 'image' not in data:
-        return jsonify({'error': 'No image frame provided', 'status': 'failed'}), 400
+    room = db.create_room(teacher_name, room_name, subject, description, max_students, password)
+    return redirect(url_for('teacher_dashboard_page', room_code=room['room_code']))
 
-    img_data = data['image']
-    if ',' in img_data:
-        img_data = img_data.split(',')[1]
+@app.route('/join-room')
+def join_room_page():
+    error = request.args.get('error')
+    return render_template('join_room.html', error=error)
 
+@app.route('/api/join_room', methods=['POST'])
+def join_room_endpoint():
+    student_name = request.form.get('student_name')
+    room_code = request.form.get('room_code', '').strip().upper()
+    password = request.form.get('password', '')
+
+    room = db.get_room(room_code)
+    if not room:
+        return redirect(url_for('join_room_page', error="Invalid Room Code. Please check and try again."))
+
+    if room['password'] and room['password'] != password:
+        return redirect(url_for('join_room_page', error="Incorrect Room Password."))
+
+    db.join_room(room_code, student_name)
+    return redirect(url_for('student_dashboard_page', room_code=room_code, student_name=student_name))
+
+@app.route('/teacher/<room_code>')
+def teacher_dashboard_page(room_code):
+    room = db.get_room(room_code)
+    if not room:
+        return redirect(url_for('index_page'))
+    members = db.get_room_members(room_code)
+    questions = db.get_questions_by_room(room_code)
+    pending_requests = db.get_student_requests(room_code, status="pending")
+    return render_template('teacher_dashboard.html', room=room, members=members, questions=questions, pending_requests=pending_requests)
+
+@app.route('/student/<room_code>')
+def student_dashboard_page(room_code):
+    student_name = request.args.get('student_name', 'Student')
+    room = db.get_room(room_code)
+    if not room:
+        return redirect(url_for('index_page'))
+    latest_question = db.get_latest_question(room_code)
+    activity_logs = db.get_student_activity_logs(room_code, student_name)
+    return render_template('student_dashboard.html', room=room, student_name=student_name, latest_question=latest_question, activity_logs=activity_logs)
+
+@app.route('/history')
+def history_page():
+    room_code = request.args.get('room_code')
+    student_name = request.args.get('student_name')
+    logs = db.get_filtered_history(room_code=room_code, student_name=student_name)
+    return render_template('history.html', logs=logs)
+
+@app.route('/report/<room_code>')
+def report_page(room_code):
+    room = db.get_room(room_code)
+    if not room:
+        return redirect(url_for('index_page'))
+    members = db.get_room_members(room_code)
+    questions = db.get_questions_by_room(room_code)
+    sign_logs = db.get_filtered_history(room_code=room_code)
+    return render_template('report.html', room=room, members=members, questions=questions, sign_logs=sign_logs)
+
+# =========================================================================
+# QUESTION & ANSWER REST APIS
+# =========================================================================
+@app.route('/api/latest_question/<room_code>')
+def latest_question_endpoint(room_code):
+    q = db.get_latest_question(room_code)
+    return jsonify(q or {})
+
+@app.route('/api/question_responses/<question_id>')
+def question_responses_endpoint(question_id):
+    responses = db.get_responses_by_question(question_id)
+    return jsonify({'responses': responses})
+
+@app.route('/api/student_activity/<room_code>/<student_name>')
+def student_activity_endpoint(room_code, student_name):
+    logs = db.get_student_activity_logs(room_code, student_name)
+    return jsonify({'activity_logs': logs})
+
+# =========================================================================
+# REAL-TIME SOCKET.IO EVENT HANDLERS
+# =========================================================================
+@socketio.on('join_room_event')
+def handle_join_room_event(data):
+    room_code = data.get('room_code')
+    user_name = data.get('user_name')
+    role = data.get('role', 'student')
+    if room_code:
+        socket_join_room(room_code)
+        if role == 'student':
+            emit('student_joined_event', {'student_name': user_name, 'room_code': room_code}, to=room_code)
+
+@socketio.on('teacher_speech_event')
+def handle_teacher_speech_event(data):
+    room_code = data.get('room_code')
+    message = data.get('message')
+    teacher_name = data.get('teacher_name', 'Teacher')
+
+    if room_code and message:
+        # Create Question Entry in DB & get question_id
+        q_data = db.add_question(room_code, teacher_name, message)
+        emit('teacher_question_broadcast', q_data, to=room_code)
+
+@socketio.on('student_answer_event')
+def handle_student_answer_event(data):
+    question_id = data.get('question_id')
+    room_code = data.get('room_code')
+    student_name = data.get('student_name')
+    answer = data.get('answer')
+    confidence = data.get('confidence', 1.0)
+    status = data.get('status', 'ANSWERED')
+
+    if question_id and room_code and student_name and answer:
+        resp_data = db.submit_or_update_student_response(question_id, room_code, student_name, answer, confidence, status)
+        emit('student_answer_broadcast', resp_data, to=room_code)
+
+@socketio.on('student_status_event')
+def handle_student_status_event(data):
+    room_code = data.get('room_code')
+    if room_code:
+        emit('student_status_broadcast', data, to=room_code)
+
+@app.route('/api/resolve_request', methods=['POST'])
+def resolve_request_endpoint():
+    data = request.json or {}
+    req_id = data.get('request_id')
+    if req_id:
+        db.resolve_student_request(req_id)
+        return jsonify({'status': 'success'})
+    return jsonify({'error': 'Invalid request_id'}), 400
+
+# =========================================================================
+# REAL-TIME SIGN RECOGNITION API (/predict)
+# =========================================================================
+@app.route('/predict', methods=['POST'])
+def predict_endpoint():
     try:
-        img_bytes = base64.b64decode(img_data)
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    except Exception as e:
-        return jsonify({'error': f'Failed to decode image frame: {e}', 'status': 'failed'}), 400
+        data = request.json or {}
+        image_data = data.get('image', None)
+        if not image_data:
+            return jsonify({'error': 'No image provided', 'status': 'failed'}), 400
 
-    if frame is None:
-        return jsonify({'error': 'Decoded image frame is empty', 'status': 'failed'}), 400
+        if ',' in image_data:
+            image_data = image_data.split(',')[1]
+        image_bytes = base64.b64decode(image_data)
+        np_arr = np.frombuffer(image_bytes, np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
 
-    eng = get_engine()
-    res = eng.process_frame(frame)
-    res['status'] = 'success'
-    latest_status.update(res)
+        eng = get_engine()
+        result = eng.process_frame(frame)
 
-    return jsonify(res)
-
-@app.route('/api/clear', methods=['POST'])
-def clear_endpoint():
-    global latest_status
-    eng = get_engine()
-    eng.clear_buffer()
-    latest_status['stable_sentence'] = "Buffer cleared"
-    latest_status['confidence'] = 0.0
-    return jsonify({'status': 'success', 'message': 'Buffer cleared successfully.'})
-
-@app.route('/api/predict_video', methods=['POST'])
-def predict_video_endpoint():
-    if 'video' not in request.files:
-        return jsonify({'error': 'No video file provided', 'status': 'failed'}), 400
-
-    file = request.files['video']
-    if file.filename == '':
-        return jsonify({'error': 'No selected video file', 'status': 'failed'}), 400
-
-    filename = secure_filename(file.filename)
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    file.save(filepath)
-
-    try:
-        result = run_video_file_inference(filepath)
         return jsonify({
             'status': 'success',
-            'prediction': result['prediction'],
-            'confidence': result['confidence'],
-            'processing_time_sec': result['processing_time_sec']
+            'predicted_text': result.get('predicted_text', ''),
+            'confidence': result.get('confidence', 0.0),
+            'top_predictions': result.get('top_predictions', []),
+            'stable': result.get('stable', False),
+            'uncertain': result.get('uncertain', True),
+            'people_count': result.get('people_count', 0),
+            'signer_status': result.get('signer_status', 'No signer detected'),
+            'buffer_size': result.get('buffer_size', 0),
+            'sequence_ready': result.get('sequence_ready', False),
+            'backend_received_shape': result.get('backend_received_shape', '(1, 0, 252)'),
+            'model_loaded': result.get('model_loaded', 'best_model_252.pth'),
+            'fps': result.get('fps', 0.0)
         })
+
     except Exception as e:
         return jsonify({'error': str(e), 'status': 'failed'}), 500
 
-@app.route('/api/metrics', methods=['GET'])
-def get_metrics():
-    metrics_path = os.path.join(MODELS_DIR, 'velocity_experiment_metrics.json')
-    if os.path.exists(metrics_path):
-        with open(metrics_path, 'r') as f:
-            return jsonify(json.load(f))
-    return jsonify({'error': 'Metrics not available'}), 404
-
 if __name__ == '__main__':
     get_engine()
-    get_camera()
-    print("Flask app running at http://127.0.0.1:5001")
-    app.run(host='0.0.0.0', port=5001, debug=False)
+    print("🚀 Smart Inclusive Classroom Platform running at http://127.0.0.1:5001")
+    socketio.run(app, host='0.0.0.0', port=5001, debug=False)

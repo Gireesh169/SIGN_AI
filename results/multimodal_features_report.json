@@ -1,0 +1,21 @@
+{
+  "hand_feature_dimension": 252,
+  "face_feature_dimension": 16,
+  "pose_feature_dimension": 24,
+  "number_of_valid_sequences": 673,
+  "total_frames_processed": 20190,
+  "missing_landmark_statistics": {
+    "missing_hand_frames": 5828,
+    "missing_hand_pct": 28.87,
+    "missing_face_frames": 515,
+    "missing_face_pct": 2.55,
+    "missing_pose_frames": 33,
+    "missing_pose_pct": 0.16
+  },
+  "saved_files": {
+    "hand_features": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/data/x_hand_features_252.npy",
+    "face_features": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/data/x_face_features_compact.npy",
+    "pose_features": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/data/x_pose_features_compact.npy",
+    "labels": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/data/y_labels_multimodal.npy"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "Exp_A_Baseline": {
+    "test_acc": 0.16494845360824742,
+    "top5_acc": 0.5154639175257731,
+    "macro_f1": 0.1254295532646048,
+    "unseen_acc": 45.0
+  },
+  "Exp_B_Geometric": {
+    "test_acc": 0.16494845360824742,
+    "top5_acc": 0.4948453608247423,
+    "macro_f1": 0.10810014727540498,
+    "unseen_acc": 40.0
+  },
+  "Exp_C_Gated_Multimodal": {
+    "test_acc": 0.17525773195876287,
+    "top5_acc": 0.5154639175257731,
+    "macro_f1": 0.11993127147766322,
+    "unseen_acc": 40.0
+  },
+  "Exp_D_Pretrained_Gated": {
+    "test_acc": 0.2268041237113402,
+    "top5_acc": 0.4948453608247423,
+    "macro_f1": 0.18011782032400586,
+    "unseen_acc": 40.0
+  }
+}

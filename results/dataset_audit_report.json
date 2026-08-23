@@ -1,0 +1,15 @@
+{
+  "dataset_name": "ISL_CSLRT 97-Class Sentence Dataset",
+  "total_samples": 673,
+  "active_classes": 97,
+  "sequence_length": 30,
+  "raw_landmark_feature_dim": 126,
+  "train_samples": 479,
+  "val_samples": 97,
+  "test_samples": 97,
+  "train_split_pct": 71.17,
+  "val_split_pct": 14.41,
+  "test_split_pct": 14.41,
+  "leak_free_verification": true,
+  "augmentation_policy": "Training split ONLY. Validation & Test splits remain 100% unaugmented and pristine."
+}

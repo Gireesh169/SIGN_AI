@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student Classroom | {{ student_name }} ({{ room.room_code }})</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        if (typeof window.drawConnectors === 'undefined') window.drawConnectors = function() {};
+        if (typeof window.drawLandmarks === 'undefined') window.drawLandmarks = function() {};
+        if (typeof window.HAND_CONNECTIONS === 'undefined') window.HAND_CONNECTIONS = [];
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>🎓</span>
+            <span>Student View: {{ student_name }}</span>
+        </div>
+        <div class="nav-links">
+            <span class="badge badge-success">ROOM: {{ room.room_code }}</span>
+            <a href="/" class="btn btn-secondary">Leave Room</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 1300px; margin-top: 1.5rem;">
+        
+        <!-- SECTION A: CURRENT TEACHER QUESTION -->
+        <div class="accessible-teacher-box">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                <label id="active-q-label">👨‍🏫 TEACHER LIVE QUESTION / INSTRUCTION</label>
+                <button class="btn btn-secondary" onclick="listenTeacherSpeechAgain()" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;">🔊 Listen Again</button>
+            </div>
+            <div class="accessible-text" id="student-teacher-broadcast">"{{ latest_question.question_text if latest_question else 'Waiting for teacher question...' }}"</div>
+            <div style="font-size: 0.85rem; color: var(--secondary-color); margin-top: 0.5rem; display: flex; justify-content: space-between;">
+                <span id="active-q-id-tag">Question ID: {{ latest_question.question_id if latest_question else 'None' }}</span>
+                <span id="active-q-time-tag">Asked at: {{ latest_question.created_at if latest_question else 'Just now' }}</span>
+            </div>
+        </div>
+
+        <div style="display: grid; grid-template-columns: 1fr 360px; gap: 1.5rem;">
+            
+            <!-- SECTION B: CAMERA & REAL-TIME ISL SIGN DETECTION -->
+            <div class="glass-card" style="padding: 1.5rem;">
+                <div class="video-wrapper">
+                    <video id="webcam" autoplay playsinline muted></video>
+                    <canvas id="output_canvas"></canvas>
+                    <div class="video-overlay-badge">
+                        <span class="dot-indicator"></span>
+                        <span id="camera-status-text">Camera Active — MediaPipe Tracking</span>
+                    </div>
+                </div>
+
+                <!-- DETECTED SIGN RESULT CARD -->
+                <div style="margin-top: 1.5rem; background: rgba(15, 23, 42, 0.8); padding: 1.25rem; border-radius: 0.75rem; border: 1px solid var(--border-color);">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <label style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">DETECTED SIGN ANSWER</label>
+                            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin-top: 0.2rem;" id="student-detected-sign">Capturing sign... 0 / 30 frames</div>
+                        </div>
+                        <div style="text-align: right;">
+                            <span class="badge badge-warning" id="student-status-badge">CAPTURING</span>
+                            <div style="font-size: 0.9rem; color: var(--text-muted); margin-top: 0.4rem;" id="student-confidence-text">Confidence: --%</div>
+                        </div>
+                    </div>
+
+                    <!-- ACTION BUTTONS: SEND / UPDATE ANSWER & AUTO-SEND TOGGLE -->
+                    <div style="margin-top: 1rem; display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border-color); padding-top: 0.8rem;">
+                        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; color: var(--text-muted);">
+                            <input type="checkbox" id="auto-send-toggle" checked style="width: 18px; height: 18px; cursor: pointer;">
+                            <label for="auto-send-toggle" style="cursor: pointer; margin: 0;">Auto-Send when stable</label>
+                        </div>
+                        <div style="display: flex; gap: 0.8rem;">
+                            <button class="btn btn-secondary" onclick="speakText(currentPredictedText)" style="padding: 0.5rem 1rem;">🔊 Listen</button>
+                            <button class="btn btn-primary" id="btn-send-answer" onclick="manualSendAnswer()" style="padding: 0.5rem 1.2rem;">✓ Send Answer</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TOP 3 PREDICTIONS BREAKDOWN -->
+                <div style="margin-top: 1rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
+                    <h4 style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 0.5rem;">📊 TOP PREDICTIONS BREAKDOWN</h4>
+                    <div id="top-predictions-container" style="display: flex; gap: 1rem; font-size: 0.9rem; color: var(--text-muted);">
+                        <span>1. Capturing...</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- SECTION C: MY RECENT RESPONSES & ACTIVITY LOG -->
+            <aside class="glass-card">
+                <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--secondary-color);">📜 MY RECENT ACTIVITY</h3>
+                
+                <div class="timeline-list" id="my-activity-container" style="max-height: 480px;">
+                    {% for log in activity_logs %}
+                    <div class="timeline-item">
+                        <div class="timeline-header">
+                            <span>❓ {{ log.question_text }}</span>
+                            <span class="badge badge-success">{{ log.timestamp }}</span>
+                        </div>
+                        <div class="timeline-message">"{{ log.message }}"</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; display: flex; justify-content: space-between;">
+                            <span>Status: {{ log.action_type }}</span>
+                            <span style="color: var(--accent-green); font-weight: 700;">{{ (log.confidence * 100)|round(1) }}% Conf</span>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;" id="no-activity-placeholder">No recent activity recorded yet.</p>
+                    {% endfor %}
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+    <script>
+        const ROOM_CODE = "{{ room.room_code }}";
+        const STUDENT_NAME = "{{ student_name }}";
+        let activeQuestionId = "{{ latest_question.question_id if latest_question else '' }}";
+        let currentPredictedText = "";
+        let currentConfidence = 0.0;
+        let submittedQuestionsMap = {};
+        const socket = io();
+
+        socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: STUDENT_NAME, role: 'student' });
+
+        socket.on('teacher_question_broadcast', function(data) {
+            activeQuestionId = data.question_id;
+            document.getElementById('student-teacher-broadcast').innerText = `"${data.question_text}"`;
+            document.getElementById('active-q-id-tag').innerText = `Question ID: ${data.question_id}`;
+            document.getElementById('active-q-time-tag').innerText = `Asked at: ${data.timestamp}`;
+            
+            // Reset answer button for new question
+            const btn = document.getElementById('btn-send-answer');
+            btn.innerText = "✓ Send Answer";
+            btn.className = "btn btn-primary";
+
+            socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'WAITING' });
+            speakText(data.question_text);
+        });
+
+        function listenTeacherSpeechAgain() {
+            const text = document.getElementById('student-teacher-broadcast').innerText.replace(/"/g, '');
+            speakText(text);
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window && text && !text.includes('Waiting for')) {
+                const synth = window.speechSynthesis;
+                const utt = new SpeechSynthesisUtterance(text);
+                synth.speak(utt);
+            }
+        }
+
+        function manualSendAnswer() {
+            if (!currentPredictedText || currentPredictedText.includes('Capturing') || currentPredictedText.includes('No hands')) {
+                alert("Please perform a sign gesture first.");
+                return;
+            }
+            sendAnswerToServer(currentPredictedText, currentConfidence);
+        }
+
+        function sendAnswerToServer(answerText, confVal) {
+            if (!activeQuestionId) {
+                alert("Waiting for teacher to ask a question.");
+                return;
+            }
+
+            const isUpdate = submittedQuestionsMap[activeQuestionId] ? true : false;
+            submittedQuestionsMap[activeQuestionId] = answerText;
+
+            // Socket emit to Teacher Dashboard
+            socket.emit('student_answer_event', {
+                question_id: activeQuestionId,
+                room_code: ROOM_CODE,
+                student_name: STUDENT_NAME,
+                answer: answerText,
+                confidence: confVal / 100.0,
+                status: 'ANSWERED'
+            });
+
+            // Update UI Button
+            const btn = document.getElementById('btn-send-answer');
+            btn.innerText = "✓ Answer Submitted (Update)";
+            btn.className = "btn btn-success";
+
+            // Prepend to My Activity Log
+            addMyActivityItem({
+                question_text: document.getElementById('student-teacher-broadcast').innerText.replace(/"/g, ''),
+                message: answerText,
+                action_type: isUpdate ? 'ANSWER_UPDATED' : 'ANSWER_SENT',
+                confidence: confVal / 100.0,
+                timestamp: new Date().toLocaleTimeString()
+            });
+
+            speakText(answerText);
+        }
+
+        function addMyActivityItem(item) {
+            const holder = document.getElementById('no-activity-placeholder');
+            if (holder) holder.remove();
+
+            const container = document.getElementById('my-activity-container');
+            const div = document.createElement('div');
+            div.className = 'timeline-item';
+            div.innerHTML = `
+                <div class="timeline-header">
+                    <span>❓ ${item.question_text}</span>
+                    <span class="badge badge-success">${item.timestamp}</span>
+                </div>
+                <div class="timeline-message">"${item.message}"</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; display: flex; justify-content: space-between;">
+                    <span>Status: ${item.action_type}</span>
+                    <span style="color: var(--accent-green); font-weight: 700;">${Math.round(item.confidence * 100)}% Conf</span>
+                </div>
+            `;
+            container.prepend(div);
+        }
+
+        // Real-Time Camera & ML Frame Processing Loop
+        const videoElement = document.getElementById('webcam');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        function onResults(results) {
+            canvasElement.width = videoElement.videoWidth || 640;
+            canvasElement.height = videoElement.videoHeight || 480;
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+
+            if (results.multiHandLandmarks) {
+                for (const landmarks of results.multiHandLandmarks) {
+                    if (typeof drawConnectors !== 'undefined' && typeof HAND_CONNECTIONS !== 'undefined') {
+                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 3});
+                        drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 2});
+                    } else {
+                        for (const pt of landmarks) {
+                            canvasCtx.beginPath();
+                            canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 4, 0, 2 * Math.PI);
+                            canvasCtx.fillStyle = '#00FF00';
+                            canvasCtx.fill();
+                        }
+                    }
+                }
+            }
+            canvasCtx.restore();
+        }
+
+        const hands = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+        });
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 0,
+            minDetectionConfidence: 0.3,
+            minTrackingConfidence: 0.3
+        });
+        hands.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                try {
+                    if (typeof hands !== 'undefined' && hands && hands.send) {
+                        await hands.send({image: videoElement});
+                    }
+                } catch (err) {}
+                sendFrameToServer();
+            },
+            width: 640,
+            height: 480
+        });
+        camera.start();
+
+        let lastPredictTime = 0;
+        let lastAutoSentAnswer = "";
+
+        function sendFrameToServer() {
+            const now = Date.now();
+            if (now - lastPredictTime < 50) return;
+            lastPredictTime = now;
+
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = 320;
+            tempCanvas.height = 240;
+            const ctx = tempCanvas.getContext('2d');
+            ctx.drawImage(videoElement, 0, 0, 320, 240);
+            const base64Data = tempCanvas.toDataURL('image/jpeg', 0.5);
+
+            fetch('/predict', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ image: base64Data })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    currentPredictedText = data.predicted_text || "";
+                    currentConfidence = data.confidence || 0.0;
+
+                    document.getElementById('student-detected-sign').innerText = currentPredictedText ? `"${currentPredictedText}"` : 'Capturing sign...';
+                    document.getElementById('student-confidence-text').innerText = `Confidence: ${currentConfidence}%`;
+                    
+                    const badge = document.getElementById('student-status-badge');
+                    const autoSend = document.getElementById('auto-send-toggle').checked;
+
+                    if (data.stable && !data.uncertain && currentConfidence >= 35) {
+                        badge.className = 'badge badge-success';
+                        badge.innerText = 'CONFIRMED';
+
+                        if (autoSend && currentPredictedText !== lastAutoSentAnswer) {
+                            lastAutoSentAnswer = currentPredictedText;
+                            sendAnswerToServer(currentPredictedText, currentConfidence);
+                        }
+                    } else if (data.buffer_size < 30) {
+                        badge.className = 'badge badge-warning';
+                        badge.innerText = 'CAPTURING';
+                        socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'CAPTURING_SIGN' });
+                    } else {
+                        badge.className = 'badge badge-danger';
+                        badge.innerText = 'UNCERTAIN';
+                    }
+
+                    // Update Top 3 predictions breakdown
+                    if (data.top_predictions && data.top_predictions.length > 0) {
+                        let topHtml = '';
+                        data.top_predictions.slice(0, 3).forEach((tp, i) => {
+                            topHtml += `<div><strong>${i+1}. ${tp.sentence}</strong> — ${tp.confidence}%</div>`;
+                        });
+                        document.getElementById('top-predictions-container').innerHTML = topHtml;
+                    }
+                }
+            })
+            .catch(err => console.error(err));
+        }
+    </script>
+</body>
+</html>

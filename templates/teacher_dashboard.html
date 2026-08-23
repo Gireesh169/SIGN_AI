@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Teacher Dashboard | {{ room.room_name }} ({{ room.room_code }})</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>👨‍🏫</span>
+            <span>Teacher Dashboard: {{ room.room_name }}</span>
+        </div>
+        <div class="nav-links">
+            <span class="badge badge-success" id="class-status-badge">CLASS IN SESSION</span>
+            <a href="/report/{{ room.room_code }}" class="btn btn-secondary">📊 Class Report</a>
+            <a href="/" class="btn btn-danger" onclick="return confirm('End class and return home?')">End Session</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 1600px;">
+        <div class="dashboard-grid">
+            
+            <!-- LEFT SIDEBAR: Room Info & Student Response Status -->
+            <aside class="glass-card">
+                <div style="margin-bottom: 1.5rem;">
+                    <label style="font-size: 0.8rem; color: var(--secondary-color); font-weight: 700;">UNIQUE ROOM CODE</label>
+                    <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 0.8rem 1rem; border-radius: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--border-color);">
+                        <span style="font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: 2px;" id="room-code-display">{{ room.room_code }}</span>
+                        <button class="btn btn-secondary" onclick="navigator.clipboard.writeText('{{ room.room_code }}'); alert('Room Code Copied!')" style="padding: 0.4rem 0.8rem;">📋 Copy</button>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 1.5rem;">
+                    <h4 style="font-size: 1rem; color: var(--text-muted); margin-bottom: 0.5rem;">CLASSROOM DETAILS</h4>
+                    <p style="font-weight: 600; color: #fff;">{{ room.room_name }}</p>
+                    <p style="font-size: 0.9rem; color: var(--text-muted);">Subject: {{ room.subject }}</p>
+                    <p style="font-size: 0.9rem; color: var(--text-muted);">Teacher: {{ room.teacher_name }}</p>
+                </div>
+
+                <div>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                        <h4 style="font-size: 1rem; color: var(--text-muted);">STUDENT STATUS MONITOR</h4>
+                        <span class="badge badge-success" id="student-count-badge">{{ members|length }} Active</span>
+                    </div>
+
+                    <div class="timeline-list" id="student-list-container" style="max-height: 350px;">
+                        {% for m in members %}
+                        <div class="timeline-item" id="student-row-{{ m.student_name }}" style="padding: 0.6rem 0.8rem; display: flex; justify-content: space-between; align-items: center;">
+                            <div>
+                                <span style="font-weight: 600; color: #fff;">🎓 {{ m.student_name }}</span>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);" id="status-sub-{{ m.student_name }}">Joined: {{ m.joined_at }}</div>
+                            </div>
+                            <span class="badge badge-warning" id="status-tag-{{ m.student_name }}">WAITING</span>
+                        </div>
+                        {% else %}
+                        <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;">Waiting for students to join...</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </aside>
+
+            <!-- CENTER: Teacher Speech & Classroom Question History -->
+            <main class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
+                    <h3 style="font-size: 1.4rem;">🎙️ Teacher Speech Broadcast & Question System</h3>
+                    <div style="display: flex; gap: 0.8rem;">
+                        <button id="btn-toggle-speech" class="btn btn-primary" onclick="toggleTeacherSpeech()">🎙️ Start Speech Recognition</button>
+                    </div>
+                </div>
+
+                <div class="accessible-teacher-box">
+                    <label>ACTIVE TEACHER QUESTION / INSTRUCTION BROADCASTED TO STUDENTS</label>
+                    <div class="accessible-text" id="teacher-live-transcript">"Speech recognition inactive. Click 'Start Speech Recognition' to ask a question."</div>
+                    <div style="font-size: 0.85rem; color: var(--secondary-color); margin-top: 0.5rem; font-weight: 700;" id="active-question-id-tag">ACTIVE QUESTION ID: None</div>
+                </div>
+
+                <!-- QUESTION HISTORY LIST -->
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h4 style="font-size: 1.1rem; color: var(--text-muted);">📋 CLASSROOM QUESTION HISTORY</h4>
+                    <span class="badge badge-secondary" id="total-questions-badge">{{ questions|length }} Questions Asked</span>
+                </div>
+
+                <div class="timeline-list" id="questions-history-container" style="max-height: 340px;">
+                    {% for q in questions %}
+                    <div class="timeline-item" style="cursor: pointer;" onclick="loadQuestionResponses('{{ q.question_id }}', '{{ q.question_text }}')">
+                        <div class="timeline-header">
+                            <span>❓ QUESTION #{{ loop.revindex }}</span>
+                            <span class="badge badge-success">{{ q.answered_count }} / {{ members|length }} Answered</span>
+                        </div>
+                        <div class="timeline-message">"{{ q.question_text }}"</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between;">
+                            <span>Asked at: {{ q.created_at }}</span>
+                            <span style="color: var(--secondary-color); font-weight: 600;">Click to view responses ➔</span>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;" id="no-questions-placeholder">No questions asked in this classroom session yet.</p>
+                    {% endfor %}
+                </div>
+            </main>
+
+            <!-- RIGHT PANEL: Live Student Responses Queue & Question Details -->
+            <aside class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem;">
+                    <h3 style="font-size: 1.2rem;">🟢 LIVE STUDENT RESPONSES</h3>
+                    <span class="badge badge-success" id="responses-count-badge">0 Answers</span>
+                </div>
+
+                <div class="timeline-list" id="live-responses-container" style="max-height: 520px;">
+                    <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;" id="no-responses-placeholder">Waiting for student sign responses...</p>
+                </div>
+            </aside>
+
+        </div>
+    </div>
+
+    <!-- QUESTION DETAIL MODAL CONTAINER -->
+    <div id="question-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
+        <div class="glass-card" style="width: 90%; max-width: 700px; max-height: 80vh; overflow-y: auto;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.3rem; color: var(--secondary-color);" id="modal-q-title">Question Breakdown</h3>
+                <button class="btn btn-secondary" onclick="closeQuestionModal()">✕ Close</button>
+            </div>
+            <div class="accessible-teacher-box" style="padding: 1rem; margin-bottom: 1rem;">
+                <div style="font-size: 1.4rem; font-weight: 700; color: #fff;" id="modal-q-text">"Question text"</div>
+            </div>
+            <div id="modal-responses-container" class="timeline-list">
+                <!-- Response items loaded dynamically -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ROOM_CODE = "{{ room.room_code }}";
+        const TEACHER_NAME = "{{ room.teacher_name }}";
+        let activeQuestionId = null;
+        const socket = io();
+
+        socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: TEACHER_NAME, role: 'teacher' });
+
+        socket.on('student_joined_event', function(data) {
+            location.reload();
+        });
+
+        socket.on('teacher_question_broadcast', function(data) {
+            activeQuestionId = data.question_id;
+            document.getElementById('teacher-live-transcript').innerText = `"${data.question_text}"`;
+            document.getElementById('active-question-id-tag').innerText = `ACTIVE QUESTION ID: ${data.question_id}`;
+            addQuestionToHistory(data);
+        });
+
+        socket.on('student_answer_broadcast', function(data) {
+            addLiveResponse(data);
+            updateStudentStatus(data.student_name, 'ANSWERED', data.predicted_answer);
+        });
+
+        socket.on('student_status_broadcast', function(data) {
+            updateStudentStatus(data.student_name, data.status);
+        });
+
+        function updateStudentStatus(studentName, status, extraText = '') {
+            const tag = document.getElementById(`status-tag-${studentName}`);
+            const sub = document.getElementById(`status-sub-${studentName}`);
+            if (tag) {
+                tag.innerText = status;
+                if (status === 'ANSWERED') tag.className = 'badge badge-success';
+                else if (status === 'CAPTURING_SIGN') tag.className = 'badge badge-warning';
+                else if (status === 'LOW_CONFIDENCE') tag.className = 'badge badge-danger';
+            }
+            if (sub && extraText) {
+                sub.innerText = `Answer: "${extraText}"`;
+            }
+        }
+
+        function addQuestionToHistory(data) {
+            const holder = document.getElementById('no-questions-placeholder');
+            if (holder) holder.remove();
+
+            const container = document.getElementById('questions-history-container');
+            const item = document.createElement('div');
+            item.className = 'timeline-item';
+            item.style.cursor = 'pointer';
+            item.onclick = function() { loadQuestionResponses(data.question_id, data.question_text); };
+            item.innerHTML = `
+                <div class="timeline-header">
+                    <span>❓ NEW QUESTION</span>
+                    <span class="badge badge-success">0 Answered</span>
+                </div>
+                <div class="timeline-message">"${data.question_text}"</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between;">
+                    <span>Asked at: ${data.timestamp}</span>
+                    <span style="color: var(--secondary-color); font-weight: 600;">Click to view responses ➔</span>
+                </div>
+            `;
+            container.prepend(item);
+        }
+
+        function addLiveResponse(data) {
+            const holder = document.getElementById('no-responses-placeholder');
+            if (holder) holder.remove();
+
+            const container = document.getElementById('live-responses-container');
+            const item = document.createElement('div');
+            item.className = 'timeline-item';
+            item.innerHTML = `
+                <div class="timeline-header">
+                    <span>🟢 🎓 ${data.student_name}</span>
+                    <span class="badge badge-success">${Math.round(data.confidence * 100)}% Conf</span>
+                </div>
+                <div class="timeline-message" style="margin-bottom: 0.4rem;">"${data.predicted_answer}"</div>
+                <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                    <span>${data.is_update ? 'Updated Answer' : 'Answered'}</span>
+                    <button class="btn btn-secondary" onclick="speakText('${data.predicted_answer}')" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">🔊 Listen</button>
+                </div>
+            `;
+            container.prepend(item);
+        }
+
+        function speakText(text) {
+            if ('speechSynthesis' in window) {
+                const synth = window.speechSynthesis;
+                const utt = new SpeechSynthesisUtterance(text);
+                synth.speak(utt);
+            }
+        }
+
+        function loadQuestionResponses(qId, qText) {
+            document.getElementById('modal-q-text').innerText = `"${qText}"`;
+            document.getElementById('question-modal').style.display = 'flex';
+
+            fetch(`/api/question_responses/${qId}`)
+            .then(res => res.json())
+            .then(data => {
+                const container = document.getElementById('modal-responses-container');
+                if (data.responses && data.responses.length > 0) {
+                    let html = '';
+                    data.responses.forEach(r => {
+                        html += `
+                            <div class="timeline-item">
+                                <div class="timeline-header">
+                                    <span>🎓 ${r.student_name}</span>
+                                    <span class="badge badge-success">${Math.round(r.confidence * 100)}%</span>
+                                </div>
+                                <div class="timeline-message">"${r.predicted_answer}"</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Updated at: ${r.updated_at}</div>
+                            </div>
+                        `;
+                    });
+                    container.innerHTML = html;
+                } else {
+                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No student responses recorded for this question yet.</p>';
+                }
+            });
+        }
+
+        function closeQuestionModal() {
+            document.getElementById('question-modal').style.display = 'none';
+        }
+
+        // Web Speech API
+        let recognition = null;
+        let isListening = false;
+
+        if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            recognition = new SpeechRecognition();
+            recognition.continuous = true;
+            recognition.interimResults = true;
+            recognition.lang = 'en-US';
+
+            recognition.onresult = function(event) {
+                let interim = '';
+                let finalStr = '';
+
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalStr += event.results[i][0].transcript;
+                    } else {
+                        interim += event.results[i][0].transcript;
+                    }
+                }
+
+                if (finalStr.trim().length > 0) {
+                    document.getElementById('teacher-live-transcript').innerText = `"${finalStr}"`;
+                    socket.emit('teacher_speech_event', { room_code: ROOM_CODE, message: finalStr, teacher_name: TEACHER_NAME });
+                } else if (interim.trim().length > 0) {
+                    document.getElementById('teacher-live-transcript').innerText = `"${interim}..."`;
+                }
+            };
+        }
+
+        function toggleTeacherSpeech() {
+            if (!recognition) {
+                alert("Speech recognition is not supported in this browser. Please use Chrome.");
+                return;
+            }
+            const btn = document.getElementById('btn-toggle-speech');
+            if (!isListening) {
+                recognition.start();
+                isListening = true;
+                btn.className = "btn btn-danger";
+                btn.innerText = "🛑 Stop Speech Recognition";
+            } else {
+                recognition.stop();
+                isListening = false;
+                btn.className = "btn btn-primary";
+                btn.innerText = "🎙️ Start Speech Recognition";
+            }
+        }
+    </script>
+</body>
+</html>

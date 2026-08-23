@@ -1,0 +1,17 @@
+{
+  "Exp_A_Default_ImageNet_CNN": {
+    "top1_acc": 0.09278350515463918,
+    "top5_acc": 0.32989690721649484,
+    "macro_f1": 0.07113402061855668,
+    "latency_ms": 0.33939007631282214,
+    "train_val_gap": 0.3355788476852549
+  },
+  "Exp_B_Word_Pretrained_CNN": {
+    "top1_acc": 0.1958762886597938,
+    "top5_acc": 0.4948453608247423,
+    "macro_f1": 0.15704467353951887,
+    "latency_ms": 0.46017489482447044,
+    "train_val_gap": 0.3765361685642339
+  },
+  "winning_architecture": "Exp B (Word-Pretrained CNN)"
+}

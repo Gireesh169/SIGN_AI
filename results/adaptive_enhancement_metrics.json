@@ -1,0 +1,13 @@
+{
+  "setup_A_original": {
+    "detection_rate_pct": 84.62,
+    "missing_hand_rate_pct": 15.38,
+    "avg_latency_ms": 46.6
+  },
+  "setup_B_adaptive_enhanced": {
+    "detection_rate_pct": 84.62,
+    "missing_hand_rate_pct": 15.38,
+    "avg_latency_ms": 95.04,
+    "frames_enhanced_pct": 100.0
+  }
+}

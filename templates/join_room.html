@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Join Room | SIGN-AI</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>🤟</span>
+            <a href="/" style="color: inherit; text-decoration: none;">SIGN-AI Classroom</a>
+        </div>
+        <div class="nav-links">
+            <a href="/">Home</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 500px; margin-top: 3rem;">
+        <div class="glass-card">
+            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center;">🎓 Join Virtual Classroom</h2>
+            <p style="color: var(--text-muted); text-align: center; margin-bottom: 2rem;">Enter your student name and the unique room code provided by your teacher.</p>
+
+            {% if error %}
+            <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-red); padding: 0.8rem; border-radius: 0.5rem; color: #fca5a5; margin-bottom: 1.5rem; text-align: center;">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <form action="/api/join_room" method="POST">
+                <div class="form-group">
+                    <label>Student Name *</label>
+                    <input type="text" name="student_name" class="form-control" placeholder="e.g. Rahul Kumar" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Room Code *</label>
+                    <input type="text" name="room_code" class="form-control" placeholder="e.g. SIGN-4821" style="text-transform: uppercase; font-weight: 700; letter-spacing: 2px;" required>
+                </div>
+
+                <div class="form-group">
+                    <label>Password (If required)</label>
+                    <input type="password" name="password" class="form-control" placeholder="Optional password">
+                </div>
+
+                <button type="submit" class="btn btn-primary" style="width: 100%; justify-content: center; padding: 1rem; margin-top: 1rem;">🚪 Enter Classroom</button>
+            </form>
+        </div>
+    </div>
+</body>
+</html>
