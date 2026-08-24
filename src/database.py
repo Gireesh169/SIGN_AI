@@ -464,3 +464,52 @@ class ClassroomDatabase:
             'status': r[4],
             'timestamp': r[5]
         } for r in rows]
+
+    def add_student_sign_log(self, room_code, student_name, sentence, confidence, status="CONFIRMED"):
+        ts = datetime.now().strftime("%H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO student_sign_logs (room_code, student_name, detected_sentence, confidence, status, timestamp)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (room_code, student_name, sentence, float(confidence), status, ts))
+
+        cursor.execute('''
+            INSERT INTO student_requests (room_code, student_name, detected_sentence, confidence, status, timestamp)
+            VALUES (?, ?, ?, ?, 'pending', ?)
+        ''', (room_code, student_name, sentence, float(confidence), ts))
+
+        conn.commit()
+        conn.close()
+
+        return {
+            'room_code': room_code,
+            'student_name': student_name,
+            'detected_sentence': sentence,
+            'confidence': float(confidence),
+            'status': status,
+            'timestamp': ts
+        }
+
+    def get_student_requests(self, room_code, status="pending"):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, student_name, detected_sentence, confidence, status, timestamp FROM student_requests WHERE room_code = ? AND status = ? ORDER BY id ASC", (room_code, status))
+        rows = cursor.fetchall()
+        conn.close()
+
+        return [{
+            'id': r[0],
+            'student_name': r[1],
+            'detected_sentence': r[2],
+            'confidence': float(r[3]),
+            'status': r[4],
+            'timestamp': r[5]
+        } for r in rows]
+
+    def resolve_student_request(self, request_id):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE student_requests SET status = 'resolved' WHERE id = ?", (request_id,))
+        conn.commit()
+        conn.close()

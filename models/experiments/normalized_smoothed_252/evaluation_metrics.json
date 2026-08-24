@@ -1,0 +1,16 @@
+{
+  "total_extracted_samples": 673,
+  "number_of_classes": 101,
+  "train_samples": 2425,
+  "val_samples": 97,
+  "test_samples": 97,
+  "train_accuracy": 0.8816494845360825,
+  "best_val_accuracy": 0.26804123711340205,
+  "test_accuracy": 0.31958762886597936,
+  "top5_accuracy": 0.6907216494845361,
+  "macro_f1": 0.26288659793814434,
+  "weighted_f1": 0.26288659793814434,
+  "train_val_gap": 61.36082474226805,
+  "recognized_classes_count": 66,
+  "best_model_path": "/Users/apple/Desktop/SIGNAI ALL MODELS/Combine_model/models/experiments/normalized_smoothed_252/best_model.pth"
+}

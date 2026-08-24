@@ -1,0 +1,13 @@
+{
+  "experiment_name": "normalized_smoothed_252",
+  "input_dim": 252,
+  "position_dim": 126,
+  "velocity_dim": 126,
+  "sequence_length": 30,
+  "normalization": "wrist_relative_palm_scale",
+  "casual_velocity": true,
+  "target_samples_per_class": 25,
+  "label_smoothing": 0.05,
+  "adamw_weight_decay": 0.0001,
+  "random_seed": 42
+}

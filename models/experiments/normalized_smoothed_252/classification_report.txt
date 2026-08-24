@@ -1,0 +1,107 @@
+                                       precision    recall  f1-score   support
+
+            He is going into the room       0.00      0.00      0.00         1
+          No need to worry dont worry       0.00      0.00      0.00         1
+              This place is beautiful       0.00      0.00      0.00         1
+                   are you free today       0.00      0.00      0.00         1
+             are you hiding something       0.00      0.00      0.00         1
+                   bring water for me       0.00      0.00      0.00         1
+                       can i help you       0.00      0.00      0.00         1
+           can you repeat that please       0.00      0.00      0.00         1
+                       comb your hair       0.00      0.00      0.00         1
+                      congratulations       0.00      0.00      0.00         1
+         could you please talk slower       0.33      1.00      0.50         1
+                       do me a favour       0.00      0.00      0.00         1
+                     do not abuse him       0.00      0.00      0.00         1
+                   do not be stubborn       1.00      1.00      1.00         1
+                       do not hurt me       0.00      0.00      0.00         1
+                 do not make me angry       0.00      0.00      0.00         1
+          do not take it to the heart       0.00      0.00      0.00         1
+                         do not worry       1.00      1.00      1.00         1
+                do you need something       1.00      1.00      1.00         1
+                         go and sleep       0.00      0.00      0.00         1
+                        had your food       0.00      0.00      0.00         1
+                     he came by train       0.00      0.00      0.00         1
+                     he is on the way       0.00      0.00      0.00         1
+                  he she is my friend       0.00      0.00      0.00         1
+             he would be coming today       1.00      1.00      1.00         1
+                              help me       0.33      1.00      0.50         1
+                       hi how are you       0.00      0.00      0.00         1
+                       how are things       0.00      0.00      0.00         1
+                   how can i help you       0.50      1.00      0.67         1
+                  how can i trust you       0.00      0.00      0.00         1
+                         how dare you       0.00      0.00      0.00         1
+                      how old are you       1.00      1.00      1.00         1
+                           i am (age)       0.00      0.00      0.00         1
+                  i am afraid of that       0.50      1.00      0.67         1
+                          i am crying       0.50      1.00      0.67         1
+                   i am feeling bored       1.00      1.00      1.00         1
+                    i am feeling cold       0.50      1.00      0.67         1
+             i am fine. thank you sir       0.00      0.00      0.00         1
+                          i am hungry       1.00      1.00      1.00         1
+           i am in dilemma what to do       0.00      0.00      0.00         1
+                 i am not really sure       0.00      0.00      0.00         1
+                 i am really grateful       0.33      1.00      0.50         1
+            i am sitting in the class       1.00      1.00      1.00         1
+           i am so sorry to hear that       0.00      0.00      0.00         1
+            i am suffering from fever       0.00      0.00      0.00         1
+                           i am tired       0.00      0.00      0.00         1
+                      i am very happy       0.00      0.00      0.00         1
+             i can not help you there       0.00      0.00      0.00         1
+                       i do not agree       0.50      1.00      0.67         1
+                     i do not like it       0.00      0.00      0.00         1
+                     i do not mean it       1.00      1.00      1.00         1
+                         i dont agree       1.00      1.00      1.00         1
+                      i enjoyed a lot       1.00      1.00      1.00         1
+                           i got hurt       1.00      1.00      1.00         1
+                i like you i love you       0.00      0.00      0.00         1
+                         i need water       0.50      1.00      0.67         1
+                            i promise       0.00      0.00      0.00         1
+               i really appreciate it       0.00      0.00      0.00         1
+       i somehow got to know about it       1.00      1.00      1.00         1
+            i was stopped by some one       0.00      0.00      0.00         1
+it does not make any difference to me       0.00      0.00      0.00         1
+        it was nice chatting with you       0.00      0.00      0.00         1
+                    let him take time       1.00      1.00      1.00         1
+                  my name is xxxxxxxx       0.00      0.00      0.00         1
+                     nice to meet you       0.00      0.00      0.00         1
+   now onwards he will never hurt you       0.50      1.00      0.67         1
+  pour some more water into the glass       0.50      1.00      0.67         1
+                      prepare the bed       1.00      1.00      1.00         1
+                       serve the food       0.00      0.00      0.00         1
+                  shall we go outside       1.00      1.00      1.00         1
+                         speak softly       0.00      0.00      0.00         1
+                take care of yourself       0.00      0.00      0.00         1
+                        tell me truth       0.00      0.00      0.00         1
+                    thank you so much       0.00      0.00      0.00         1
+               that is so kind of you       0.00      0.00      0.00         1
+                    try to understand       0.00      0.00      0.00         1
+         turn on light turn off light       0.00      0.00      0.00         1
+                  we are all with you       0.00      0.00      0.00         1
+                       wear the shirt       0.00      0.00      0.00         1
+                   what are you doing       0.00      0.00      0.00         1
+                what did you tell him       0.00      0.00      0.00         1
+                       what do you do       1.00      1.00      1.00         1
+                    what do you think       0.50      1.00      0.67         1
+           what do you want to become       0.00      0.00      0.00         1
+                        what happened       0.00      0.00      0.00         1
+what have you planned for your career       0.00      0.00      0.00         1
+            what is your phone number       0.33      1.00      0.50         1
+                        what you want       0.00      0.00      0.00         1
+            when will the train leave       0.00      0.00      0.00         1
+                   where are you from       0.00      0.00      0.00         1
+     which collegeschool are you from       0.00      0.00      0.00         1
+                          who are you       0.33      1.00      0.50         1
+                    why are you angry       0.00      0.00      0.00         1
+                   why are you crying       0.00      0.00      0.00         1
+             why are you disappointed       0.00      0.00      0.00         1
+                          you are bad       0.00      0.00      0.00         1
+                         you are good       0.00      0.00      0.00         1
+                      you are welcome       0.00      0.00      0.00         0
+                        you can do it       0.00      0.00      0.00         0
+       you do anything, i do not care       0.00      0.00      0.00         0
+   you need a medicine, take this one       0.00      0.00      0.00         0
+
+                             accuracy                           0.32        97
+                            macro avg       0.23      0.31      0.25        97
+                         weighted avg       0.24      0.32      0.26        97
