@@ -1,27 +1,112 @@
-# Python
+# ============================================================
+# SIGN-AI — .gitignore
+# ============================================================
+
+# Python bytecode
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
 
-# PyTorch models
+# Virtual environment
+venv/
+.venv/
+env/
+
+# Environment secrets — NEVER commit
+.env
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ============================================================
+# PyTorch model files — block ALL by default
+# then UNBLOCK only the three production deployment artifacts
+# ============================================================
 *.pth
 *.pt
 
-# NumPy generated data
+# Unblock the production model and associated config files
+!models/best_model_252.pth
+!models/label_mapping.json
+!models/preprocessing_config.json
+
+# Block experimental and training-run models explicitly
+models/best_model.pth
+models/best_model_126.pth
+models/best_model_378.pth
+models/best_model_expA_252d.pth
+models/best_model_expA_default_cnn.pth
+models/best_model_expA_motion_252d.pth
+models/best_model_expB_280d.pth
+models/best_model_expB_handcrop_visual_only.pth
+models/best_model_expB_word_pretrained.pth
+models/best_model_expC_gated_multimodal_crops.pth
+models/best_model_expC_multimodal.pth
+models/best_model_expD_pretrained.pth
+models/best_model_multimodal_hand_face.pth
+models/best_model_multimodal_hand_face_pose.pth
+models/best_model_multimodal_hand_only.pth
+models/best_model_multimodal_hand_pose.pth
+models/bilstm_gru_model.pth
+models/multimodal_best_model.pth
+models/word_finetuned_mobilenet.pth
+models/word_pretrained_cnn.pth
+models/previous_run/
+models/experiments/
+
+# ============================================================
+# Data files — generated, not tracked
+# ============================================================
 *.npy
 *.npz
+data/*.csv
+data/*.db
+data/*.json
 
+# ============================================================
+# Training dataset — large corpus, never deployed
+# ============================================================
+ISL_CSLRT_Corpus/
+
+# ============================================================
+# Output artifacts — regenerated on training run
+# ============================================================
+results/
+results/*.png
+models/confusion_matrix.png
+models/training_history.png
+models/training_history.json
+models/eval_metrics.json
+models/velocity_experiment_metrics.json
+models/classification_report.txt
+models/multimodal_metrics.json
+models/word_label_mapping.json
+
+# ============================================================
+# Uploads — user-uploaded files, not tracked in git
+# ============================================================
+static/uploads/
+
+# ============================================================
 # Videos
+# ============================================================
 *.mp4
 *.avi
 *.mov
 *.mkv
 
-# Uploaded files
-static/uploads/
+# ============================================================
+# Node.js (package-lock present in project root)
+# ============================================================
+node_modules/
 
-# Generated datasets
-data/*.csv
-data/*.json
-
-# Generated results
-results/*.png
+# ============================================================
+# IDE and editor files
+# ============================================================
+.idea/
+.vscode/
+*.swp
+*.swo

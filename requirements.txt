@@ -1,12 +1,31 @@
+# ============================================================
+# SIGN-AI — Runtime Requirements
+# ============================================================
+# Only packages actually imported at runtime are listed here.
+# Training-only packages (scikit-learn, matplotlib, tqdm, gtts)
+# are intentionally excluded.
+#
+# opencv-python-headless is used instead of opencv-python to
+# avoid libGL GUI dependencies on headless Linux cloud hosts.
+# ============================================================
+
+# Web framework
+Flask>=2.2.0,<3.0
+Flask-SocketIO>=5.3.0,<6.0
+Werkzeug>=2.2.0,<3.0
+
+# Async server required by Flask-SocketIO async_mode='eventlet'
+eventlet>=0.33.0
+
+# ML / Vision
 torch>=2.0.0
 mediapipe>=0.10.0
-opencv-python>=4.8.0
-scikit-learn>=1.2.0
+opencv-python-headless>=4.8.0
 numpy>=1.24.0
-flask>=2.2.0
+
+# TTS (optional — silently fails on headless cloud; client-side Web Speech API used instead)
 pyttsx3>=2.90
-gtts>=2.3.0
+
+# Video file fallback (optional — used in video_inference.py fallback path)
 imageio>=2.30.0
 imageio-ffmpeg>=0.4.8
-matplotlib>=3.7.0
-tqdm>=4.65.0

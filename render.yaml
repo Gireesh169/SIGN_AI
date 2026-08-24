@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: sign-ai-classroom
+    env: python
+    region: oregon  # Change to your preferred region
+    plan: free      # Upgrade for persistent disk (required for SQLite persistence)
+
+    # Build command — installs runtime dependencies
+    buildCommand: pip install -r requirements.txt
+
+    # Start command — Flask-SocketIO 5.x with eventlet uses socketio.run()
+    startCommand: python app.py
+
+    # Health check — Render pings this to verify the service is alive
+    healthCheckPath: /health
+
+    # Environment variables — set real values in the Render dashboard
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true       # Render auto-generates a secure random value
+
+      - key: PORT
+        value: 10000              # Render assigns this automatically; keep default
+
+      - key: SOCKETIO_CORS_ORIGINS
+        value: "*"                # Restrict to your domain after prototype phase
+
+      - key: PYTHON_VERSION
+        value: "3.10.12"
+
+    # IMPORTANT: SQLite data directory
+    # Free plan does NOT provide persistent disk — data is lost on redeploy.
+    # Upgrade to a paid plan and mount a disk at /opt/render/project/src/data
+    # or migrate to PostgreSQL for production persistence.
