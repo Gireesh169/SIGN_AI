@@ -12,6 +12,7 @@ __pycache__/
 venv/
 .venv/
 env/
+test_deploy_env/
 
 # Environment secrets — NEVER commit
 .env

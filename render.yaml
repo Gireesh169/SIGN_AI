@@ -5,6 +5,10 @@ services:
     region: oregon  # Change to your preferred region
     plan: free      # Upgrade for persistent disk (required for SQLite persistence)
 
+    # Python version — must match .python-version in repo root
+    # mediapipe==0.10.21 requires Python 3.10 (no wheel exists for 3.12)
+    pythonVersion: "3.10.12"
+
     # Build command — installs runtime dependencies
     buildCommand: pip install -r requirements.txt
 
@@ -24,9 +28,6 @@ services:
 
       - key: SOCKETIO_CORS_ORIGINS
         value: "*"                # Restrict to your domain after prototype phase
-
-      - key: PYTHON_VERSION
-        value: "3.10.12"
 
     # IMPORTANT: SQLite data directory
     # Free plan does NOT provide persistent disk — data is lost on redeploy.
