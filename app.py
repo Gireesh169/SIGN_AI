@@ -288,8 +288,91 @@ def resolve_request_endpoint():
     return jsonify({'error': 'Invalid request_id'}), 400
 
 # =========================================================================
-# REAL-TIME SIGN RECOGNITION API (/predict)
+# REAL-TIME SIGN RECOGNITION API
 # =========================================================================
+
+@app.route('/predict_sequence', methods=['POST'])
+def predict_sequence_endpoint():
+    """
+    POST /predict_sequence — Accepts a pre-extracted 30-frame × 126-feature landmark
+    sequence from the browser (MediaPipe already ran client-side), runs BiLSTM+GRU
+    inference, and returns prediction results.
+
+    Expected JSON body:
+        { "sequence": [[f0, f1, ..., f125], ..., [f0, ..., f125]] }   # shape (30, 126)
+
+    Error handling:
+      400 — Missing/invalid sequence payload
+      500 — Inference engine failure (safe message only, no traceback exposed)
+    """
+    logger.info('predict_sequence request from %s', request.remote_addr)
+
+    # --- Input validation ---
+    data = request.json or {}
+    sequence = data.get('sequence', None)
+
+    if sequence is None:
+        logger.warning('predict_sequence: missing "sequence" field')
+        return jsonify({
+            'status': 'failed',
+            'error': 'Missing "sequence" field. Expected {"sequence": [[...126 values...] x 30]}'
+        }), 400
+
+    if not isinstance(sequence, list):
+        logger.warning('predict_sequence: sequence is not a list, got %s', type(sequence).__name__)
+        return jsonify({'status': 'failed', 'error': 'Invalid sequence payload: must be a JSON array'}), 400
+
+    if len(sequence) != 30:
+        logger.warning('predict_sequence: expected 30 frames, got %d', len(sequence))
+        return jsonify({
+            'status': 'failed',
+            'error': f'Invalid sequence length: expected 30 frames, got {len(sequence)}'
+        }), 400
+
+    try:
+        arr = np.array(sequence, dtype=np.float32)
+        if arr.shape != (30, 126):
+            raise ValueError(f'Shape mismatch: expected (30, 126), got {arr.shape}')
+    except Exception as shape_err:
+        logger.warning('predict_sequence: shape validation failed: %s', shape_err)
+        return jsonify({'status': 'failed', 'error': f'Invalid sequence shape: {shape_err}'}), 400
+
+    # --- Inference ---
+    try:
+        eng = get_engine()
+        result = eng.predict_sequence(arr)
+    except FileNotFoundError:
+        logger.error('Inference engine unavailable: model file not found')
+        return jsonify({'error': 'Inference service unavailable', 'status': 'failed'}), 500
+    except Exception as inf_err:
+        logger.error('predict_sequence inference error: %s', inf_err, exc_info=True)
+        return jsonify({'error': 'Inference failed. Please try again.', 'status': 'failed'}), 500
+
+    logger.info(
+        'predict_sequence result: text=%r conf=%.1f stable=%s uncertain=%s',
+        result.get('predicted_text', ''),
+        result.get('confidence', 0.0),
+        result.get('stable'),
+        result.get('uncertain')
+    )
+
+    return jsonify({
+        'status': 'success',
+        'predicted_text': result.get('predicted_text', ''),
+        'confidence': result.get('confidence', 0.0),
+        'top_predictions': result.get('top_predictions', []),
+        'stable': result.get('stable', False),
+        'uncertain': result.get('uncertain', True),
+        'people_count': 0,
+        'signer_status': 'Frontend MediaPipe',
+        'buffer_size': 30,
+        'sequence_ready': True,
+        'backend_received_shape': '(1, 30, 252)',
+        'model_loaded': 'best_model_252.pth',
+        'fps': 0.0
+    })
+
+
 @app.route('/predict', methods=['POST'])
 def predict_endpoint():
     """
@@ -299,6 +382,9 @@ def predict_endpoint():
     Error handling:
       400 — No image provided or image could not be decoded
       500 — Inference engine failure (safe message only, no traceback exposed)
+
+    NOTE: The student dashboard uses /predict_sequence instead, which accepts
+    pre-extracted MediaPipe landmark sequences directly from the browser.
     """
     logger.info('Prediction request received from %s', request.remote_addr)
 
@@ -306,12 +392,13 @@ def predict_endpoint():
     data = request.json or {}
     image_data = data.get('image', None)
     if not image_data:
-        logger.warning('Prediction request missing image field')
-        return jsonify({'error': 'No image provided', 'status': 'failed'}), 400
+        logger.warning('Prediction request missing image field (keys present: %s)', list(data.keys()))
+        return jsonify({'error': 'No image provided', 'status': 'failed',
+                        'hint': 'Use /predict_sequence to send MediaPipe landmark sequences directly'}), 400
 
     # --- Decode base64 image ---
     try:
-        if ',' in image_data:
+        if isinstance(image_data, str) and ',' in image_data:
             image_data = image_data.split(',')[1]
         image_bytes = base64.b64decode(image_data)
         np_arr = np.frombuffer(image_bytes, np.uint8)
@@ -327,11 +414,9 @@ def predict_endpoint():
         eng = get_engine()
         result = eng.process_frame(frame)
     except FileNotFoundError:
-        # Model file missing — service degraded
         logger.error('Inference engine unavailable: model file not found')
         return jsonify({'error': 'Inference service unavailable', 'status': 'failed'}), 500
     except Exception as inf_err:
-        # Log full details server-side only; return safe message to client
         logger.error('Inference error: %s', inf_err, exc_info=True)
         return jsonify({'error': 'Inference failed. Please try again.', 'status': 'failed'}), 500
 

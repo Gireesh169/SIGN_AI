@@ -689,43 +689,70 @@
         }
         canvasCtx.restore();
 
-        // Buffer 126D frame
+        // ── Buffer management ──
+        // IMPORTANT: Only buffer frames where hands were actually detected.
+        // If no hands: clear the buffer entirely (prevents stale mixed-frame sequences
+        // from reaching inference) and show "No hands detected" without calling /predict_sequence.
         if (handsDetected > 0) {
             const frame126 = leftHand.concat(rightHand);
             landmarkBuffer.push(frame126);
             if (landmarkBuffer.length > 30) landmarkBuffer.shift();
         } else {
-            if (landmarkBuffer.length > 0) landmarkBuffer.shift();
+            // No hands — clear buffer so inference never runs on no-hand frames
+            landmarkBuffer = [];
         }
 
         const bufLen = landmarkBuffer.length;
         if (dbgFramesBuf) dbgFramesBuf.textContent = `${bufLen} / 30`;
-        document.getElementById('student-detected-sign').textContent =
-            handsDetected > 0
-                ? `Capturing sign... ${bufLen} / 30 frames`
-                : `No hands detected — ${bufLen} / 30 frames`;
 
-        // When 30 frames are buffered, run inference
+        // ── UI feedback ──
+        if (handsDetected > 0) {
+            document.getElementById('student-detected-sign').textContent =
+                bufLen < 30
+                    ? `Hands detected: ${handsDetected} — Frames: ${bufLen} / 30`
+                    : `Sign ready — Hands: ${handsDetected} — Frames: 30 / 30`;
+        } else {
+            document.getElementById('student-detected-sign').textContent = 'No hands detected';
+        }
+
+        // ── Trigger inference only when 30 VALID (hand-only) frames are buffered ──
         if (bufLen === 30 && !isInferencing) {
             sendInferenceRequest([...landmarkBuffer]);
         }
     }
 
     /* ============================================================
-       INFERENCE — POST 30-frame 126D sequence to /predict
+       INFERENCE — POST 30-frame 126D landmark sequence to /predict_sequence
     ============================================================ */
     async function sendInferenceRequest(sequence30x126) {
         if (isInferencing) return;
         isInferencing = true;
+
+        // Sanity check: verify sequence shape before sending
+        if (!Array.isArray(sequence30x126) || sequence30x126.length !== 30) {
+            console.warn('[PREDICT] Skipping: sequence length =', sequence30x126 ? sequence30x126.length : 'null', '(expected 30)');
+            isInferencing = false;
+            return;
+        }
+        if (!Array.isArray(sequence30x126[0]) || sequence30x126[0].length !== 126) {
+            console.warn('[PREDICT] Skipping: frame feature dim =', sequence30x126[0] ? sequence30x126[0].length : 'null', '(expected 126)');
+            isInferencing = false;
+            return;
+        }
+
+        console.log('[PREDICT] Sending /predict_sequence — shape: 30 ×', sequence30x126[0].length);
+
         try {
-            const response = await fetch('/predict', {
+            const response = await fetch('/predict_sequence', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ sequence: sequence30x126 })
             });
 
             if (!response.ok) {
-                console.warn('[PREDICT] HTTP error', response.status);
+                // Read body for debugging — never log the full sequence array
+                const responseText = await response.text();
+                console.error('[PREDICT] HTTP error', response.status, responseText);
                 isInferencing = false;
                 return;
             }
