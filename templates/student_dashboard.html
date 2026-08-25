@@ -417,7 +417,7 @@
 
         // 1. Verify API
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            showCamError('Camera API not available. Use HTTPS or localhost.');
+            showCamError('Camera API not available. This page must be served over HTTPS or localhost.');
             startCamBtn.disabled = false;
             return;
         }
@@ -432,10 +432,39 @@
             }
         }
 
-        // 3. Build constraints — GENERIC first, no deviceId
+        // 3. Pre-check: enumerate devices BEFORE getUserMedia.
+        //    Even without permission, browsers list device slots (empty labels but present).
+        //    If 0 videoinput entries → camera hardware not visible to OS at all.
+        try {
+            const preDevices = await navigator.mediaDevices.enumerateDevices();
+            const videoDevices = preDevices.filter(d => d.kind === 'videoinput');
+            console.log('[CAMERA] Pre-enum: videoinput devices visible =', videoDevices.length);
+            if (dbgDeviceCount) dbgDeviceCount.textContent = videoDevices.length;
+
+            if (videoDevices.length === 0) {
+                showCamError(
+                    '⚠️ No camera hardware detected by your browser.\n\n' +
+                    'Possible causes:\n' +
+                    '• macOS System Settings → Privacy & Security → Camera — make sure Google Chrome is listed and enabled\n' +
+                    '• Another app (FaceTime, Zoom, Photo Booth) is exclusively using the camera — quit those apps and try again\n' +
+                    '• The camera is physically disconnected or disabled'
+                );
+                startCamBtn.disabled = false;
+                return;
+            }
+        } catch (enumErr) {
+            // enumerateDevices can fail in very restricted contexts — not fatal, continue
+            console.warn('[CAMERA] Pre-enum failed (non-fatal):', enumErr.message);
+        }
+
+        // 4. Build constraints.
+        //    On desktop: use bare { video: true } first — avoids NotFoundError from facingMode on desktop browsers.
+        //    facingMode is only reliably used on mobile.
+        //    If user picked a specific device, validate it still exists.
         let constraints;
+        const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
+
         if (selectedDeviceId) {
-            // User explicitly chose a device — validate it still exists first
             const exists = availableDevices.some(d => d.deviceId === selectedDeviceId);
             if (exists) {
                 console.log('[CAMERA] Requesting camera with deviceId:', selectedDeviceId);
@@ -443,25 +472,35 @@
             } else {
                 console.warn('[CAMERA] Saved deviceId not found — falling back to generic.');
                 selectedDeviceId = '';
-                constraints = { video: { facingMode: currentFacingMode }, audio: false };
+                constraints = isMobile
+                    ? { video: { facingMode: currentFacingMode }, audio: false }
+                    : { video: true, audio: false };
             }
-        } else {
-            console.log('[CAMERA] Requesting generic camera (facingMode:', currentFacingMode, ')');
+        } else if (isMobile) {
+            console.log('[CAMERA] Mobile detected — requesting facingMode:', currentFacingMode);
             constraints = { video: { facingMode: currentFacingMode }, audio: false };
+        } else {
+            console.log('[CAMERA] Desktop detected — requesting bare video:true');
+            constraints = { video: true, audio: false };
         }
 
-        // 4. Acquire stream
+        // 5. Acquire stream — one fallback if the chosen constraints fail
         let stream;
         try {
             stream = await navigator.mediaDevices.getUserMedia(constraints);
             console.log('[CAMERA] Stream acquired');
         } catch (err) {
-            // If facingMode constraint failed, retry without it
-            if ((err.name === 'OverconstrainedError' || err.name === 'NotFoundError') && !selectedDeviceId) {
-                console.warn('[CAMERA] facingMode constraint failed, retrying with bare video:true');
+            // Fallback: if any constraint-related error, try the absolute minimum
+            if (
+                (err.name === 'OverconstrainedError' ||
+                 err.name === 'NotFoundError' ||
+                 err.name === 'ConstraintNotSatisfiedError') &&
+                JSON.stringify(constraints) !== JSON.stringify({ video: true, audio: false })
+            ) {
+                console.warn('[CAMERA] Constraint failed (', err.name, '), retrying with bare video:true');
                 try {
                     stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    console.log('[CAMERA] Stream acquired (fallback bare)');
+                    console.log('[CAMERA] Stream acquired (bare fallback)');
                 } catch (err2) {
                     handleCamError(err2);
                     startCamBtn.disabled = false;
@@ -838,32 +877,41 @@
         switch (err.name) {
             case 'NotFoundError':
             case 'DevicesNotFoundError':
-                msg = '⚠️ No camera device was found. Check that a camera is connected and not disabled in your OS settings.';
+                msg =
+                    '⚠️ Camera not accessible (NotFoundError).\n' +
+                    'Steps to fix on Mac:\n' +
+                    '1. Open System Settings → Privacy & Security → Camera\n' +
+                    '2. Make sure Google Chrome is listed and the toggle is ON\n' +
+                    '3. Quit any app using the camera: FaceTime, Zoom, Photo Booth, QuickTime, Teams\n' +
+                    '4. Refresh this page and click Start Camera again';
                 break;
             case 'NotAllowedError':
             case 'PermissionDeniedError':
-                msg = '🔒 Camera permission was denied. Click the camera icon in the browser address bar and allow access for this site, then reload.';
+                msg =
+                    '🔒 Camera permission denied.\n' +
+                    'Fix: Click the 🔒 lock icon in the Chrome address bar → Camera → Allow → Reload the page.';
                 break;
             case 'NotReadableError':
             case 'TrackStartError':
-                msg = '🚫 The camera is already being used by another application. Close other apps using the camera (e.g. Zoom, Teams) and try again.';
+                msg =
+                    '🚫 Camera is locked by another app.\n' +
+                    'Fix: Quit FaceTime, Zoom, Photo Booth, QuickTime, or Teams, then click Start Camera again.';
                 break;
             case 'OverconstrainedError':
             case 'ConstraintNotSatisfiedError':
-                msg = '⚠️ The selected camera is unavailable or does not support the requested settings. Switching to default camera.';
-                // Auto-retry with no constraints
+                msg = '⚠️ Camera constraints not supported — retrying with defaults...';
                 selectedDeviceId  = '';
                 currentFacingMode = 'user';
-                setTimeout(startCamera, 500);
+                setTimeout(startCamera, 600);
                 break;
             case 'SecurityError':
-                msg = '🔒 Camera access is blocked by the browser. Ensure this page is served over HTTPS or localhost.';
+                msg = '🔒 Camera blocked by browser security. Serve this page over HTTPS or use localhost.';
                 break;
             case 'AbortError':
-                msg = '⚠️ Camera access was aborted unexpectedly. Please try again.';
+                msg = '⚠️ Camera access was aborted. Please try clicking Start Camera again.';
                 break;
             default:
-                msg = `⚠️ Unable to start camera: ${err.message || err.name}. Please check your camera and try again.`;
+                msg = `⚠️ Camera error (${err.name}): ${err.message || 'Unknown error'}. Check your camera and try again.`;
         }
         showCamError(msg);
     }
