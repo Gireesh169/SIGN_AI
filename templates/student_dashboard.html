@@ -4,17 +4,145 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Student Classroom | {{ student_name }} ({{ room.room_code }})</title>
+    <meta name="description" content="SIGN-AI Student Classroom — Real-time ISL sign language detection and classroom interaction.">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+    <!-- MediaPipe safe guards: define stubs before loading scripts -->
     <script>
         if (typeof window.drawConnectors === 'undefined') window.drawConnectors = function() {};
         if (typeof window.drawLandmarks === 'undefined') window.drawLandmarks = function() {};
         if (typeof window.HAND_CONNECTIONS === 'undefined') window.HAND_CONNECTIONS = [];
     </script>
-    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+
+    <style>
+        /* ── Camera Section ── */
+        .cam-wrapper {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 0.75rem;
+            overflow: hidden;
+            aspect-ratio: 4/3;
+            min-height: 240px;
+        }
+        #webcam, #output_canvas {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            object-fit: cover;
+            border-radius: 0.75rem;
+        }
+        #output_canvas { pointer-events: none; }
+        .cam-placeholder {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            background: rgba(15,23,42,0.95);
+            color: #64748b;
+            font-size: 1rem;
+            font-weight: 500;
+            border-radius: 0.75rem;
+            z-index: 5;
+        }
+        .cam-placeholder .icon { font-size: 3rem; }
+        .cam-overlay-badge {
+            position: absolute;
+            top: 0.75rem; left: 0.75rem;
+            display: none;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(0,0,0,0.65);
+            backdrop-filter: blur(6px);
+            padding: 0.3rem 0.7rem;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #fff;
+            z-index: 10;
+        }
+        .dot-indicator {
+            width: 8px; height: 8px;
+            border-radius: 50%;
+            background: #6b7280;
+            flex-shrink: 0;
+        }
+        .dot-indicator.green  { background: #10b981; box-shadow: 0 0 6px #10b981; }
+        .dot-indicator.red    { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
+        .dot-indicator.yellow { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
+
+        /* ── Camera Controls ── */
+        .cam-controls {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 0.75rem;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        #cameraSelect {
+            flex: 1;
+            min-width: 120px;
+            padding: 0.45rem 0.75rem;
+            background: rgba(15,23,42,0.9);
+            border: 1px solid #334155;
+            border-radius: 0.5rem;
+            color: #e2e8f0;
+            font-size: 0.85rem;
+            font-family: 'Inter', sans-serif;
+        }
+
+        /* ── Camera Error Banner ── */
+        #camErrorBanner {
+            display: none;
+            margin-top: 0.6rem;
+            padding: 0.6rem 1rem;
+            border-radius: 0.5rem;
+            background: rgba(239,68,68,0.15);
+            border: 1px solid rgba(239,68,68,0.4);
+            color: #fca5a5;
+            font-size: 0.85rem;
+            line-height: 1.4;
+        }
+
+        /* ── Camera Debug Panel ── */
+        #camDebugPanel {
+            display: none;
+            margin-top: 0.75rem;
+            background: rgba(0,0,0,0.6);
+            border: 1px solid #1e293b;
+            border-radius: 0.5rem;
+            padding: 0.75rem 1rem;
+            font-size: 0.78rem;
+            color: #94a3b8;
+            font-family: 'Courier New', monospace;
+            line-height: 1.8;
+        }
+        #camDebugPanel .debug-row {
+            display: flex;
+            justify-content: space-between;
+            border-bottom: 1px solid rgba(255,255,255,0.04);
+            padding: 0.1rem 0;
+        }
+        #camDebugPanel .debug-val { color: #7dd3fc; font-weight: 600; }
+        .debug-toggle-btn {
+            font-size: 0.75rem;
+            padding: 0.3rem 0.6rem;
+            background: transparent;
+            border: 1px solid #334155;
+            border-radius: 0.4rem;
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .debug-toggle-btn:hover { color: #94a3b8; border-color: #475569; }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -29,7 +157,7 @@
     </nav>
 
     <div class="container" style="max-width: 1300px; margin-top: 1.5rem;">
-        
+
         <!-- SECTION A: CURRENT TEACHER QUESTION -->
         <div class="accessible-teacher-box">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
@@ -44,16 +172,54 @@
         </div>
 
         <div style="display: grid; grid-template-columns: 1fr 360px; gap: 1.5rem;">
-            
+
             <!-- SECTION B: CAMERA & REAL-TIME ISL SIGN DETECTION -->
             <div class="glass-card" style="padding: 1.5rem;">
-                <div class="video-wrapper">
+
+                <!-- Camera Video Area -->
+                <div class="cam-wrapper" id="camWrapper">
                     <video id="webcam" autoplay playsinline muted></video>
                     <canvas id="output_canvas"></canvas>
-                    <div class="video-overlay-badge">
-                        <span class="dot-indicator"></span>
-                        <span id="camera-status-text">Camera Active — MediaPipe Tracking</span>
+
+                    <!-- Placeholder shown when camera is off -->
+                    <div class="cam-placeholder" id="camPlaceholder">
+                        <span class="icon">📷</span>
+                        <span>Camera is off</span>
+                        <span style="font-size:0.8rem;">Click <strong>Start Camera</strong> below</span>
                     </div>
+
+                    <!-- Live badge shown when camera is on -->
+                    <div class="cam-overlay-badge" id="camOverlayBadge">
+                        <span class="dot-indicator green" id="camLiveDot"></span>
+                        <span id="camLiveText">Camera Active — MediaPipe Tracking</span>
+                    </div>
+                </div>
+
+                <!-- Camera Controls Row -->
+                <div class="cam-controls">
+                    <button class="btn btn-primary" id="startCamBtn" onclick="startCamera()">▶ Start Camera</button>
+                    <button class="btn btn-secondary" id="stopCamBtn" onclick="stopCamera()" disabled>⏹ Stop Camera</button>
+                    <button class="btn btn-secondary" id="switchCamBtn" onclick="switchCamera()" style="display:none;">🔄 Switch Camera</button>
+                    <select id="cameraSelect" onchange="onCameraSelectChange()" style="display:none;">
+                        <option value="">— Select Camera —</option>
+                    </select>
+                    <button class="debug-toggle-btn" onclick="toggleCamDebug()">🛠 Debug</button>
+                </div>
+
+                <!-- Camera Error Banner -->
+                <div id="camErrorBanner" role="alert"></div>
+
+                <!-- Camera Debug Panel -->
+                <div id="camDebugPanel">
+                    <div class="debug-row"><span>Camera API available</span><span class="debug-val" id="dbgApiAvail">—</span></div>
+                    <div class="debug-row"><span>Permission status</span><span class="debug-val" id="dbgPermission">—</span></div>
+                    <div class="debug-row"><span>Video devices found</span><span class="debug-val" id="dbgDeviceCount">—</span></div>
+                    <div class="debug-row"><span>Selected device</span><span class="debug-val" id="dbgSelectedDevice">—</span></div>
+                    <div class="debug-row"><span>Video dimensions</span><span class="debug-val" id="dbgDimensions">—</span></div>
+                    <div class="debug-row"><span>Stream active</span><span class="debug-val" id="dbgStreamActive">—</span></div>
+                    <div class="debug-row"><span>MediaPipe ready</span><span class="debug-val" id="dbgMPReady">—</span></div>
+                    <div class="debug-row"><span>Frames buffered</span><span class="debug-val" id="dbgFramesBuf">0 / 30</span></div>
+                    <div class="debug-row"><span>Last prediction</span><span class="debug-val" id="dbgLastPred">—</span></div>
                 </div>
 
                 <!-- DETECTED SIGN RESULT CARD -->
@@ -86,7 +252,7 @@
                 <div style="margin-top: 1rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
                     <h4 style="font-size: 0.9rem; color: var(--secondary-color); margin-bottom: 0.5rem;">📊 TOP PREDICTIONS BREAKDOWN</h4>
                     <div id="top-predictions-container" style="display: flex; gap: 1rem; font-size: 0.9rem; color: var(--text-muted);">
-                        <span>1. Capturing...</span>
+                        <span>1. Waiting for camera...</span>
                     </div>
                 </div>
             </div>
@@ -94,7 +260,7 @@
             <!-- SECTION C: MY RECENT RESPONSES & ACTIVITY LOG -->
             <aside class="glass-card">
                 <h3 style="font-size: 1.1rem; margin-bottom: 1rem; color: var(--secondary-color);">📜 MY RECENT ACTIVITY</h3>
-                
+
                 <div class="timeline-list" id="my-activity-container" style="max-height: 480px;">
                     {% for log in activity_logs %}
                     <div class="timeline-item">
@@ -117,225 +283,709 @@
         </div>
     </div>
 
+    <!-- ================================================================
+         STUDENT DASHBOARD — CAMERA & SIGN DETECTION SCRIPT
+         Architecture:
+           getUserMedia (browser) → MediaPipe Hands (browser)
+           → 30-frame 126D landmark buffer → POST /predict
+           → best_model_252.pth (Render backend) → display + Socket.IO
+         ================================================================ -->
     <script>
-        const ROOM_CODE = "{{ room.room_code }}";
-        const STUDENT_NAME = "{{ student_name }}";
-        let activeQuestionId = "{{ latest_question.question_id if latest_question else '' }}";
-        let currentPredictedText = "";
-        let currentConfidence = 0.0;
-        let submittedQuestionsMap = {};
-        const socket = io();
+    'use strict';
 
-        socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: STUDENT_NAME, role: 'student' });
+    /* ── Room / Student Context ── */
+    const ROOM_CODE   = "{{ room.room_code }}";
+    const STUDENT_NAME = "{{ student_name }}";
+    let activeQuestionId = "{{ latest_question.question_id if latest_question else '' }}";
 
-        socket.on('teacher_question_broadcast', function(data) {
-            activeQuestionId = data.question_id;
-            document.getElementById('student-teacher-broadcast').innerText = `"${data.question_text}"`;
-            document.getElementById('active-q-id-tag').innerText = `Question ID: ${data.question_id}`;
-            document.getElementById('active-q-time-tag').innerText = `Asked at: ${data.timestamp}`;
-            
-            // Reset answer button for new question
-            const btn = document.getElementById('btn-send-answer');
-            btn.innerText = "✓ Send Answer";
-            btn.className = "btn btn-primary";
+    /* ── Socket.IO ── */
+    const socket = io();
+    socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: STUDENT_NAME, role: 'student' });
 
-            socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'WAITING' });
-            speakText(data.question_text);
-        });
+    /* ── Camera State ── */
+    let videoStream       = null;   // active MediaStream
+    let cameraRunning     = false;
+    let animFrameId       = null;
+    let isProcessingFrame = false;
+    let currentFacingMode = 'user'; // 'user' | 'environment'
+    let availableDevices  = [];     // videoinput devices list
+    let selectedDeviceId  = '';     // currently chosen deviceId
 
-        function listenTeacherSpeechAgain() {
-            const text = document.getElementById('student-teacher-broadcast').innerText.replace(/"/g, '');
-            speakText(text);
+    /* ── Landmark / Prediction Buffers ── */
+    let landmarkBuffer        = [];  // max 30 frames × 126 values
+    let currentPredictedText  = '';
+    let currentConfidence     = 0.0;
+    let lastAutoSentAnswer    = '';
+    let submittedQuestionsMap = {};
+    let isInferencing         = false;
+
+    /* ── MediaPipe ── */
+    let mpHands           = null;
+    let mpReady           = false;
+
+    /* ── DOM Refs ── */
+    const videoEl         = document.getElementById('webcam');
+    const canvasEl        = document.getElementById('output_canvas');
+    const canvasCtx       = canvasEl.getContext('2d');
+    const camPlaceholder  = document.getElementById('camPlaceholder');
+    const camOverlayBadge = document.getElementById('camOverlayBadge');
+    const startCamBtn     = document.getElementById('startCamBtn');
+    const stopCamBtn      = document.getElementById('stopCamBtn');
+    const switchCamBtn    = document.getElementById('switchCamBtn');
+    const cameraSelect    = document.getElementById('cameraSelect');
+    const camErrorBanner  = document.getElementById('camErrorBanner');
+
+    /* ── Debug DOM ── */
+    const dbgApiAvail     = document.getElementById('dbgApiAvail');
+    const dbgPermission   = document.getElementById('dbgPermission');
+    const dbgDeviceCount  = document.getElementById('dbgDeviceCount');
+    const dbgSelectedDev  = document.getElementById('dbgSelectedDevice');
+    const dbgDimensions   = document.getElementById('dbgDimensions');
+    const dbgStreamActive = document.getElementById('dbgStreamActive');
+    const dbgMPReady      = document.getElementById('dbgMPReady');
+    const dbgFramesBuf    = document.getElementById('dbgFramesBuf');
+    const dbgLastPred     = document.getElementById('dbgLastPred');
+
+    /* ============================================================
+       INIT
+    ============================================================ */
+    document.addEventListener('DOMContentLoaded', () => {
+        // Check API availability immediately
+        const apiOk = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+        if (dbgApiAvail) dbgApiAvail.textContent = apiOk ? 'YES' : 'NO';
+
+        if (!apiOk) {
+            showCamError('Camera API not available. This page must be served over HTTPS or localhost.');
+            startCamBtn.disabled = true;
         }
 
-        function speakText(text) {
-            if ('speechSynthesis' in window && text && !text.includes('Waiting for')) {
-                const synth = window.speechSynthesis;
-                const utt = new SpeechSynthesisUtterance(text);
-                synth.speak(utt);
-            }
+        // Check permission state (non-blocking)
+        if (navigator.permissions) {
+            navigator.permissions.query({ name: 'camera' }).then(perm => {
+                if (dbgPermission) dbgPermission.textContent = perm.state;
+            }).catch(() => {
+                if (dbgPermission) dbgPermission.textContent = 'unknown';
+            });
         }
 
-        function manualSendAnswer() {
-            if (!currentPredictedText || currentPredictedText.includes('Capturing') || currentPredictedText.includes('No hands')) {
-                alert("Please perform a sign gesture first.");
+        // Init MediaPipe (non-blocking background load)
+        initMediaPipe();
+    });
+
+    /* ============================================================
+       MEDIAPIPE INIT
+    ============================================================ */
+    function initMediaPipe() {
+        try {
+            if (typeof Hands === 'undefined') {
+                console.warn('[CAMERA] MediaPipe Hands library not loaded yet, will retry on camera start.');
+                if (dbgMPReady) dbgMPReady.textContent = 'PENDING';
                 return;
             }
-            sendAnswerToServer(currentPredictedText, currentConfidence);
+
+            mpHands = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+            mpHands.setOptions({
+                maxNumHands: 2,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.3,
+                minTrackingConfidence: 0.3
+            });
+            mpHands.onResults(onMediaPipeResults);
+            mpReady = true;
+            if (dbgMPReady) dbgMPReady.textContent = 'YES';
+            console.log('[CAMERA] MediaPipe Hands ready');
+        } catch (err) {
+            console.error('[CAMERA] MediaPipe init error:', err);
+            if (dbgMPReady) dbgMPReady.textContent = 'ERROR';
+        }
+    }
+
+    /* ============================================================
+       START CAMERA — main entry point
+    ============================================================ */
+    async function startCamera() {
+        if (cameraRunning) {
+            console.log('[CAMERA] Already running, ignoring startCamera().');
+            return;
         }
 
-        function sendAnswerToServer(answerText, confVal) {
-            if (!activeQuestionId) {
-                alert("Waiting for teacher to ask a question.");
+        hideCamError();
+        startCamBtn.disabled = true;
+        stopCamBtn.disabled  = true;
+
+        // 1. Verify API
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            showCamError('Camera API not available. Use HTTPS or localhost.');
+            startCamBtn.disabled = false;
+            return;
+        }
+
+        // 2. Ensure MediaPipe is ready
+        if (!mpReady) {
+            initMediaPipe();
+            if (!mpReady) {
+                showCamError('MediaPipe Hands library failed to load. Refresh the page and try again.');
+                startCamBtn.disabled = false;
                 return;
             }
-
-            const isUpdate = submittedQuestionsMap[activeQuestionId] ? true : false;
-            submittedQuestionsMap[activeQuestionId] = answerText;
-
-            // Socket emit to Teacher Dashboard
-            socket.emit('student_answer_event', {
-                question_id: activeQuestionId,
-                room_code: ROOM_CODE,
-                student_name: STUDENT_NAME,
-                answer: answerText,
-                confidence: confVal / 100.0,
-                status: 'ANSWERED'
-            });
-
-            // Update UI Button
-            const btn = document.getElementById('btn-send-answer');
-            btn.innerText = "✓ Answer Submitted (Update)";
-            btn.className = "btn btn-success";
-
-            // Prepend to My Activity Log
-            addMyActivityItem({
-                question_text: document.getElementById('student-teacher-broadcast').innerText.replace(/"/g, ''),
-                message: answerText,
-                action_type: isUpdate ? 'ANSWER_UPDATED' : 'ANSWER_SENT',
-                confidence: confVal / 100.0,
-                timestamp: new Date().toLocaleTimeString()
-            });
-
-            speakText(answerText);
         }
 
-        function addMyActivityItem(item) {
-            const holder = document.getElementById('no-activity-placeholder');
-            if (holder) holder.remove();
-
-            const container = document.getElementById('my-activity-container');
-            const div = document.createElement('div');
-            div.className = 'timeline-item';
-            div.innerHTML = `
-                <div class="timeline-header">
-                    <span>❓ ${item.question_text}</span>
-                    <span class="badge badge-success">${item.timestamp}</span>
-                </div>
-                <div class="timeline-message">"${item.message}"</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; display: flex; justify-content: space-between;">
-                    <span>Status: ${item.action_type}</span>
-                    <span style="color: var(--accent-green); font-weight: 700;">${Math.round(item.confidence * 100)}% Conf</span>
-                </div>
-            `;
-            container.prepend(div);
-        }
-
-        // Real-Time Camera & ML Frame Processing Loop
-        const videoElement = document.getElementById('webcam');
-        const canvasElement = document.getElementById('output_canvas');
-        const canvasCtx = canvasElement.getContext('2d');
-
-        function onResults(results) {
-            canvasElement.width = videoElement.videoWidth || 640;
-            canvasElement.height = videoElement.videoHeight || 480;
-            canvasCtx.save();
-            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-            if (results.multiHandLandmarks) {
-                for (const landmarks of results.multiHandLandmarks) {
-                    if (typeof drawConnectors !== 'undefined' && typeof HAND_CONNECTIONS !== 'undefined') {
-                        drawConnectors(canvasCtx, landmarks, HAND_CONNECTIONS, {color: '#00FF00', lineWidth: 3});
-                        drawLandmarks(canvasCtx, landmarks, {color: '#FF0000', lineWidth: 2});
-                    } else {
-                        for (const pt of landmarks) {
-                            canvasCtx.beginPath();
-                            canvasCtx.arc(pt.x * canvasElement.width, pt.y * canvasElement.height, 4, 0, 2 * Math.PI);
-                            canvasCtx.fillStyle = '#00FF00';
-                            canvasCtx.fill();
-                        }
-                    }
-                }
+        // 3. Build constraints — GENERIC first, no deviceId
+        let constraints;
+        if (selectedDeviceId) {
+            // User explicitly chose a device — validate it still exists first
+            const exists = availableDevices.some(d => d.deviceId === selectedDeviceId);
+            if (exists) {
+                console.log('[CAMERA] Requesting camera with deviceId:', selectedDeviceId);
+                constraints = { video: { deviceId: { exact: selectedDeviceId } }, audio: false };
+            } else {
+                console.warn('[CAMERA] Saved deviceId not found — falling back to generic.');
+                selectedDeviceId = '';
+                constraints = { video: { facingMode: currentFacingMode }, audio: false };
             }
-            canvasCtx.restore();
+        } else {
+            console.log('[CAMERA] Requesting generic camera (facingMode:', currentFacingMode, ')');
+            constraints = { video: { facingMode: currentFacingMode }, audio: false };
         }
 
-        const hands = new Hands({
-            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
-        });
-        hands.setOptions({
-            maxNumHands: 2,
-            modelComplexity: 0,
-            minDetectionConfidence: 0.3,
-            minTrackingConfidence: 0.3
-        });
-        hands.onResults(onResults);
-
-        const camera = new Camera(videoElement, {
-            onFrame: async () => {
+        // 4. Acquire stream
+        let stream;
+        try {
+            stream = await navigator.mediaDevices.getUserMedia(constraints);
+            console.log('[CAMERA] Stream acquired');
+        } catch (err) {
+            // If facingMode constraint failed, retry without it
+            if ((err.name === 'OverconstrainedError' || err.name === 'NotFoundError') && !selectedDeviceId) {
+                console.warn('[CAMERA] facingMode constraint failed, retrying with bare video:true');
                 try {
-                    if (typeof hands !== 'undefined' && hands && hands.send) {
-                        await hands.send({image: videoElement});
-                    }
-                } catch (err) {}
-                sendFrameToServer();
-            },
-            width: 640,
-            height: 480
+                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+                    console.log('[CAMERA] Stream acquired (fallback bare)');
+                } catch (err2) {
+                    handleCamError(err2);
+                    startCamBtn.disabled = false;
+                    return;
+                }
+            } else {
+                handleCamError(err);
+                startCamBtn.disabled = false;
+                return;
+            }
+        }
+
+        // 5. Attach stream to video element
+        videoStream = stream;
+        videoEl.srcObject = stream;
+
+        try {
+            await videoEl.play();
+        } catch (playErr) {
+            console.error('[CAMERA] video.play() failed:', playErr);
+            showCamError('Video playback failed. Try refreshing the page.');
+            cleanupStream();
+            startCamBtn.disabled = false;
+            return;
+        }
+
+        // 6. Wait for video to have real dimensions
+        await waitForVideoDimensions();
+
+        // 7. Update permission info and enumerate devices for selector
+        if (dbgPermission) dbgPermission.textContent = 'granted';
+        enumerateDevices();
+
+        // 8. Set canvas size
+        canvasEl.width  = videoEl.videoWidth;
+        canvasEl.height = videoEl.videoHeight;
+        if (dbgDimensions) dbgDimensions.textContent = `${canvasEl.width} × ${canvasEl.height}`;
+        if (dbgStreamActive) dbgStreamActive.textContent = 'YES';
+
+        // 9. Flip UI state
+        cameraRunning = true;
+        landmarkBuffer    = [];
+        lastAutoSentAnswer = '';
+
+        startCamBtn.disabled = true;
+        stopCamBtn.disabled  = false;
+        camPlaceholder.style.display  = 'none';
+        camOverlayBadge.style.display = 'flex';
+
+        console.log('[CAMERA] Video ready —', videoEl.videoWidth, '×', videoEl.videoHeight);
+        console.log('[CAMERA] MediaPipe processing started');
+
+        // 10. Start frame loop
+        processFrameLoop();
+    }
+
+    /* ── Wait for video to have non-zero dimensions ── */
+    function waitForVideoDimensions() {
+        return new Promise((resolve) => {
+            if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                resolve();
+                return;
+            }
+            const onMeta = () => {
+                videoEl.removeEventListener('loadedmetadata', onMeta);
+                resolve();
+            };
+            videoEl.addEventListener('loadedmetadata', onMeta);
+            // Safety timeout
+            setTimeout(resolve, 3000);
         });
-        camera.start();
+    }
 
-        let lastPredictTime = 0;
-        let lastAutoSentAnswer = "";
+    /* ============================================================
+       STOP CAMERA
+    ============================================================ */
+    function stopCamera() {
+        cameraRunning = false;
 
-        function sendFrameToServer() {
-            const now = Date.now();
-            if (now - lastPredictTime < 50) return;
-            lastPredictTime = now;
+        if (animFrameId) {
+            cancelAnimationFrame(animFrameId);
+            animFrameId = null;
+        }
 
-            const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = 320;
-            tempCanvas.height = 240;
-            const ctx = tempCanvas.getContext('2d');
-            ctx.drawImage(videoElement, 0, 0, 320, 240);
-            const base64Data = tempCanvas.toDataURL('image/jpeg', 0.5);
+        cleanupStream();
 
-            fetch('/predict', {
+        canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+        landmarkBuffer    = [];
+        isProcessingFrame = false;
+        isInferencing     = false;
+
+        startCamBtn.disabled = false;
+        stopCamBtn.disabled  = true;
+        camPlaceholder.style.display  = 'flex';
+        camOverlayBadge.style.display = 'none';
+
+        if (dbgStreamActive) dbgStreamActive.textContent = 'NO';
+        if (dbgFramesBuf)    dbgFramesBuf.textContent    = '0 / 30';
+        if (dbgDimensions)   dbgDimensions.textContent   = '—';
+
+        document.getElementById('student-detected-sign').textContent = 'Camera stopped.';
+        document.getElementById('student-confidence-text').textContent = 'Confidence: --%';
+
+        console.log('[CAMERA] Processing loop stopped');
+    }
+
+    function cleanupStream() {
+        if (videoStream) {
+            videoStream.getTracks().forEach(t => t.stop());
+            videoStream = null;
+        }
+        videoEl.srcObject = null;
+    }
+
+    /* ============================================================
+       FRAME PROCESSING LOOP
+    ============================================================ */
+    async function processFrameLoop() {
+        if (!cameraRunning) return;
+
+        // Only send to MediaPipe if video is truly ready and not already processing
+        if (
+            !isProcessingFrame &&
+            videoEl.readyState >= 2 &&
+            videoEl.videoWidth > 0 &&
+            videoEl.videoHeight > 0 &&
+            mpReady && mpHands
+        ) {
+            isProcessingFrame = true;
+            try {
+                await mpHands.send({ image: videoEl });
+            } catch (err) {
+                // suppress per-frame errors silently
+            } finally {
+                isProcessingFrame = false;
+            }
+        }
+
+        animFrameId = requestAnimationFrame(processFrameLoop);
+    }
+
+    /* ============================================================
+       MEDIAPIPE RESULTS
+    ============================================================ */
+    function onMediaPipeResults(results) {
+        if (!cameraRunning) return;
+
+        // Sync canvas size
+        if (videoEl.videoWidth && canvasEl.width !== videoEl.videoWidth) {
+            canvasEl.width  = videoEl.videoWidth;
+            canvasEl.height = videoEl.videoHeight;
+            if (dbgDimensions) dbgDimensions.textContent = `${canvasEl.width} × ${canvasEl.height}`;
+        }
+
+        canvasCtx.save();
+        canvasCtx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+
+        let leftHand  = new Array(63).fill(0.0);
+        let rightHand = new Array(63).fill(0.0);
+        let handsDetected = 0;
+
+        if (results.multiHandLandmarks && results.multiHandedness) {
+            handsDetected = results.multiHandLandmarks.length;
+            const connections = (typeof HAND_CONNECTIONS !== 'undefined') ? HAND_CONNECTIONS : (window.HAND_CONNECTIONS || []);
+
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                const landmarks      = results.multiHandLandmarks[i];
+                const classification = results.multiHandedness[i].label; // 'Left' | 'Right'
+
+                // Draw landmarks
+                try {
+                    if (typeof drawConnectors === 'function' && connections.length > 0) {
+                        drawConnectors(canvasCtx, landmarks, connections, { color: '#6366f1', lineWidth: 3 });
+                    }
+                    if (typeof drawLandmarks === 'function') {
+                        drawLandmarks(canvasCtx, landmarks, { color: '#10b981', lineWidth: 2, radius: 4 });
+                    }
+                } catch (_) {}
+
+                // Extract 63D coordinates
+                const coords = [];
+                landmarks.forEach(lm => coords.push(lm.x, lm.y, lm.z));
+                if (classification === 'Left')  leftHand  = coords;
+                else                            rightHand = coords;
+            }
+        }
+        canvasCtx.restore();
+
+        // Buffer 126D frame
+        if (handsDetected > 0) {
+            const frame126 = leftHand.concat(rightHand);
+            landmarkBuffer.push(frame126);
+            if (landmarkBuffer.length > 30) landmarkBuffer.shift();
+        } else {
+            if (landmarkBuffer.length > 0) landmarkBuffer.shift();
+        }
+
+        const bufLen = landmarkBuffer.length;
+        if (dbgFramesBuf) dbgFramesBuf.textContent = `${bufLen} / 30`;
+        document.getElementById('student-detected-sign').textContent =
+            handsDetected > 0
+                ? `Capturing sign... ${bufLen} / 30 frames`
+                : `No hands detected — ${bufLen} / 30 frames`;
+
+        // When 30 frames are buffered, run inference
+        if (bufLen === 30 && !isInferencing) {
+            sendInferenceRequest([...landmarkBuffer]);
+        }
+    }
+
+    /* ============================================================
+       INFERENCE — POST 30-frame 126D sequence to /predict
+    ============================================================ */
+    async function sendInferenceRequest(sequence30x126) {
+        if (isInferencing) return;
+        isInferencing = true;
+        try {
+            const response = await fetch('/predict', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ image: base64Data })
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    currentPredictedText = data.predicted_text || "";
-                    currentConfidence = data.confidence || 0.0;
+                body: JSON.stringify({ sequence: sequence30x126 })
+            });
 
-                    document.getElementById('student-detected-sign').innerText = currentPredictedText ? `"${currentPredictedText}"` : 'Capturing sign...';
-                    document.getElementById('student-confidence-text').innerText = `Confidence: ${currentConfidence}%`;
-                    
-                    const badge = document.getElementById('student-status-badge');
-                    const autoSend = document.getElementById('auto-send-toggle').checked;
+            if (!response.ok) {
+                console.warn('[PREDICT] HTTP error', response.status);
+                isInferencing = false;
+                return;
+            }
 
-                    if (data.stable && !data.uncertain && currentConfidence >= 35) {
-                        badge.className = 'badge badge-success';
-                        badge.innerText = 'CONFIRMED';
+            const data = await response.json();
+            handlePredictionResult(data);
+        } catch (err) {
+            console.warn('[PREDICT] Fetch error:', err.message);
+        } finally {
+            isInferencing = false;
+        }
+    }
 
-                        if (autoSend && currentPredictedText !== lastAutoSentAnswer) {
-                            lastAutoSentAnswer = currentPredictedText;
-                            sendAnswerToServer(currentPredictedText, currentConfidence);
-                        }
-                    } else if (data.buffer_size < 30) {
-                        badge.className = 'badge badge-warning';
-                        badge.innerText = 'CAPTURING';
-                        socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'CAPTURING_SIGN' });
-                    } else {
-                        badge.className = 'badge badge-danger';
-                        badge.innerText = 'UNCERTAIN';
-                    }
+    function handlePredictionResult(data) {
+        const predictedText = data.predicted_text || data.sentence || '';
+        const confidence    = data.confidence || 0.0;
+        const topPreds      = data.top_predictions || [];
+        const isStable      = data.stable === true;
+        const isUncertain   = data.uncertain === true;
+        const bufSize       = data.buffer_size || 0;
 
-                    // Update Top 3 predictions breakdown
-                    if (data.top_predictions && data.top_predictions.length > 0) {
-                        let topHtml = '';
-                        data.top_predictions.slice(0, 3).forEach((tp, i) => {
-                            topHtml += `<div><strong>${i+1}. ${tp.sentence}</strong> — ${tp.confidence}%</div>`;
-                        });
-                        document.getElementById('top-predictions-container').innerHTML = topHtml;
+        currentPredictedText = predictedText;
+        currentConfidence    = confidence;
+
+        const signEl  = document.getElementById('student-detected-sign');
+        const confEl  = document.getElementById('student-confidence-text');
+        const badge   = document.getElementById('student-status-badge');
+
+        if (dbgLastPred) dbgLastPred.textContent = predictedText ? `${predictedText} (${confidence.toFixed(1)}%)` : '—';
+
+        if (predictedText) {
+            signEl.textContent = `"${predictedText.toUpperCase()}"`;
+        }
+        confEl.textContent = `Confidence: ${confidence.toFixed(1)}%`;
+
+        if (isStable && !isUncertain && confidence >= 35 && predictedText) {
+            badge.className   = 'badge badge-success';
+            badge.textContent = 'CONFIRMED';
+
+            const autoSend = document.getElementById('auto-send-toggle').checked;
+            if (autoSend && predictedText !== lastAutoSentAnswer) {
+                lastAutoSentAnswer = predictedText;
+                sendAnswerToServer(predictedText, confidence);
+            }
+        } else if (bufSize < 30 || landmarkBuffer.length < 30) {
+            badge.className   = 'badge badge-warning';
+            badge.textContent = 'CAPTURING';
+            socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'CAPTURING_SIGN' });
+        } else {
+            badge.className   = 'badge badge-danger';
+            badge.textContent = 'UNCERTAIN';
+        }
+
+        // Top 3 predictions
+        if (topPreds.length > 0) {
+            let html = '';
+            topPreds.slice(0, 3).forEach((tp, i) => {
+                html += `<div><strong>${i+1}. ${tp.sentence}</strong> — ${tp.confidence}%</div>`;
+            });
+            document.getElementById('top-predictions-container').innerHTML = html;
+        }
+    }
+
+    /* ============================================================
+       CAMERA DEVICE ENUMERATION
+    ============================================================ */
+    async function enumerateDevices() {
+        try {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            availableDevices = devices.filter(d => d.kind === 'videoinput');
+
+            if (dbgDeviceCount) dbgDeviceCount.textContent = availableDevices.length;
+
+            if (availableDevices.length === 0) {
+                showCamError('No camera device detected. Check that a camera is connected and not disabled.');
+                return;
+            }
+
+            // Populate selector
+            cameraSelect.innerHTML = '';
+            availableDevices.forEach((device, idx) => {
+                const opt  = document.createElement('option');
+                opt.value  = device.deviceId;
+                opt.text   = device.label || `Camera ${idx + 1}`;
+                cameraSelect.appendChild(opt);
+            });
+
+            // Show selector and switch button only if multiple cameras
+            if (availableDevices.length > 1) {
+                cameraSelect.style.display  = '';
+                switchCamBtn.style.display  = '';
+            }
+
+            // Mark current active device
+            if (videoStream) {
+                const activeTrack = videoStream.getVideoTracks()[0];
+                if (activeTrack) {
+                    const settings = activeTrack.getSettings();
+                    if (settings.deviceId) {
+                        selectedDeviceId = settings.deviceId;
+                        cameraSelect.value = selectedDeviceId;
+                        const devLabel = availableDevices.find(d => d.deviceId === selectedDeviceId);
+                        if (dbgSelectedDev) dbgSelectedDev.textContent = devLabel ? devLabel.label || 'Camera' : selectedDeviceId.slice(0, 16) + '…';
                     }
                 }
-            })
-            .catch(err => console.error(err));
+            }
+        } catch (err) {
+            console.warn('[CAMERA] enumerateDevices failed:', err);
         }
+    }
+
+    /* ── Camera select dropdown changed ── */
+    async function onCameraSelectChange() {
+        const newDeviceId = cameraSelect.value;
+        if (!newDeviceId || newDeviceId === selectedDeviceId) return;
+        selectedDeviceId = newDeviceId;
+
+        const devLabel = availableDevices.find(d => d.deviceId === selectedDeviceId);
+        if (dbgSelectedDev) dbgSelectedDev.textContent = devLabel ? devLabel.label || 'Camera' : selectedDeviceId.slice(0, 16) + '…';
+
+        if (cameraRunning) {
+            stopCamera();
+            await new Promise(r => setTimeout(r, 200));
+            await startCamera();
+        }
+    }
+
+    /* ── Switch Camera button (mobile toggle front/back) ── */
+    async function switchCamera() {
+        currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+        selectedDeviceId  = ''; // clear explicit ID so facingMode takes effect
+        cameraSelect.value = '';
+        if (cameraRunning) {
+            stopCamera();
+            await new Promise(r => setTimeout(r, 200));
+            await startCamera();
+        }
+    }
+
+    /* ============================================================
+       ERROR HANDLING
+    ============================================================ */
+    function handleCamError(err) {
+        console.error('[CAMERA] Error:', err.name, err.message);
+        if (dbgPermission) dbgPermission.textContent = (err.name === 'NotAllowedError') ? 'denied' : dbgPermission.textContent;
+        if (dbgStreamActive) dbgStreamActive.textContent = 'NO';
+
+        let msg;
+        switch (err.name) {
+            case 'NotFoundError':
+            case 'DevicesNotFoundError':
+                msg = '⚠️ No camera device was found. Check that a camera is connected and not disabled in your OS settings.';
+                break;
+            case 'NotAllowedError':
+            case 'PermissionDeniedError':
+                msg = '🔒 Camera permission was denied. Click the camera icon in the browser address bar and allow access for this site, then reload.';
+                break;
+            case 'NotReadableError':
+            case 'TrackStartError':
+                msg = '🚫 The camera is already being used by another application. Close other apps using the camera (e.g. Zoom, Teams) and try again.';
+                break;
+            case 'OverconstrainedError':
+            case 'ConstraintNotSatisfiedError':
+                msg = '⚠️ The selected camera is unavailable or does not support the requested settings. Switching to default camera.';
+                // Auto-retry with no constraints
+                selectedDeviceId  = '';
+                currentFacingMode = 'user';
+                setTimeout(startCamera, 500);
+                break;
+            case 'SecurityError':
+                msg = '🔒 Camera access is blocked by the browser. Ensure this page is served over HTTPS or localhost.';
+                break;
+            case 'AbortError':
+                msg = '⚠️ Camera access was aborted unexpectedly. Please try again.';
+                break;
+            default:
+                msg = `⚠️ Unable to start camera: ${err.message || err.name}. Please check your camera and try again.`;
+        }
+        showCamError(msg);
+    }
+
+    function showCamError(msg) {
+        camErrorBanner.textContent  = msg;
+        camErrorBanner.style.display = 'block';
+    }
+
+    function hideCamError() {
+        camErrorBanner.textContent  = '';
+        camErrorBanner.style.display = 'none';
+    }
+
+    /* ============================================================
+       DEBUG PANEL TOGGLE
+    ============================================================ */
+    function toggleCamDebug() {
+        const panel = document.getElementById('camDebugPanel');
+        panel.style.display = (panel.style.display === 'none' || !panel.style.display) ? 'block' : 'none';
+    }
+
+    /* ============================================================
+       SOCKET.IO — Teacher broadcasts
+    ============================================================ */
+    socket.on('teacher_question_broadcast', function(data) {
+        activeQuestionId = data.question_id;
+        document.getElementById('student-teacher-broadcast').textContent = `"${data.question_text}"`;
+        document.getElementById('active-q-id-tag').textContent = `Question ID: ${data.question_id}`;
+        document.getElementById('active-q-time-tag').textContent = `Asked at: ${data.timestamp}`;
+
+        const btn = document.getElementById('btn-send-answer');
+        btn.textContent = '✓ Send Answer';
+        btn.className = 'btn btn-primary';
+
+        socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'WAITING' });
+        speakText(data.question_text);
+    });
+
+    /* ============================================================
+       ANSWER SENDING
+    ============================================================ */
+    function manualSendAnswer() {
+        if (!currentPredictedText || currentPredictedText.includes('Capturing') || currentPredictedText.includes('No hands')) {
+            alert('Please perform a sign gesture first.');
+            return;
+        }
+        sendAnswerToServer(currentPredictedText, currentConfidence);
+    }
+
+    function sendAnswerToServer(answerText, confVal) {
+        if (!activeQuestionId) {
+            alert('Waiting for teacher to ask a question.');
+            return;
+        }
+
+        const isUpdate = !!submittedQuestionsMap[activeQuestionId];
+        submittedQuestionsMap[activeQuestionId] = answerText;
+
+        socket.emit('student_answer_event', {
+            question_id:  activeQuestionId,
+            room_code:    ROOM_CODE,
+            student_name: STUDENT_NAME,
+            answer:       answerText,
+            confidence:   confVal / 100.0,
+            status:       'ANSWERED'
+        });
+
+        const btn = document.getElementById('btn-send-answer');
+        btn.textContent = '✓ Answer Submitted (Update)';
+        btn.className = 'btn btn-success';
+
+        addMyActivityItem({
+            question_text: document.getElementById('student-teacher-broadcast').textContent.replace(/"/g, ''),
+            message:       answerText,
+            action_type:   isUpdate ? 'ANSWER_UPDATED' : 'ANSWER_SENT',
+            confidence:    confVal / 100.0,
+            timestamp:     new Date().toLocaleTimeString()
+        });
+
+        speakText(answerText);
+    }
+
+    /* ============================================================
+       UI HELPERS
+    ============================================================ */
+    function listenTeacherSpeechAgain() {
+        const text = document.getElementById('student-teacher-broadcast').textContent.replace(/"/g, '');
+        speakText(text);
+    }
+
+    function speakText(text) {
+        if ('speechSynthesis' in window && text && !text.includes('Waiting for')) {
+            window.speechSynthesis.cancel();
+            const utt = new SpeechSynthesisUtterance(text);
+            utt.rate  = 0.95;
+            utt.pitch = 1.0;
+            utt.lang  = 'en-US';
+            window.speechSynthesis.speak(utt);
+        }
+    }
+
+    function addMyActivityItem(item) {
+        const holder = document.getElementById('no-activity-placeholder');
+        if (holder) holder.remove();
+
+        const container = document.getElementById('my-activity-container');
+        const div = document.createElement('div');
+        div.className = 'timeline-item';
+        div.innerHTML = `
+            <div class="timeline-header">
+                <span>❓ ${item.question_text}</span>
+                <span class="badge badge-success">${item.timestamp}</span>
+            </div>
+            <div class="timeline-message">"${item.message}"</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.3rem; display: flex; justify-content: space-between;">
+                <span>Status: ${item.action_type}</span>
+                <span style="color: var(--accent-green); font-weight: 700;">${Math.round(item.confidence * 100)}% Conf</span>
+            </div>
+        `;
+        container.prepend(div);
+    }
     </script>
 </body>
 </html>
