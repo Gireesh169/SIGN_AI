@@ -189,7 +189,10 @@ class RealTimeInferenceEngine:
         self.model.load_state_dict(torch.load(model_path, map_location=self.device))
         self.model.eval()
 
-        print(f"[ENGINE STARTUP] Loaded model: {os.path.basename(model_path)} | Input dimension: {self.feature_dim} | Number of classes: {self.num_classes}")
+        print(f"[ENGINE STARTUP] Model:          {os.path.basename(model_path)}")
+        print(f"[ENGINE STARTUP] Label mapping:  {label_map_path}")
+        print(f"[ENGINE STARTUP] Classes:        {self.num_classes}")
+        print(f"[ENGINE STARTUP] Inference engine: READY")
 
         # Initialize TTS Worker
         self.tts = TTSEngineWorker()

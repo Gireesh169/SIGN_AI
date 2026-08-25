@@ -18,7 +18,7 @@ PARTIAL_Y_FILE = os.path.join(DATA_DIR, 'y_labels_partial.npy')
 
 X_FEATURES_FILE = os.path.join(DATA_DIR, 'x_features.npy')
 Y_LABELS_FILE = os.path.join(DATA_DIR, 'y_labels.npy')
-LABEL_MAPPING_FILE = os.path.join(DATA_DIR, 'sentence_labels.json')
+LABEL_MAPPING_FILE = os.path.join(MODELS_DIR, 'label_mapping.json')  # deployment artifact (models/)
 FAILED_VIDEOS_FILE = os.path.join(DATA_DIR, 'failed_videos.csv')
 
 # Model output files
