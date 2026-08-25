@@ -1,12 +1,19 @@
 # ============================================================
-# SIGN-AI — Runtime Requirements
+# SIGN-AI — Runtime Requirements (Render / Cloud Deployment)
 # ============================================================
 # Only packages actually imported at runtime are listed here.
 # Training-only packages (scikit-learn, matplotlib, tqdm, gtts)
 # are intentionally excluded.
 #
-# opencv-python-headless is used instead of opencv-python to
-# avoid libGL GUI dependencies on headless Linux cloud hosts.
+# CRITICAL: opencv-python-headless MUST be listed before mediapipe.
+# mediapipe's dependency resolver will try to install opencv-contrib-python
+# (which requires GUI libraries). By installing headless first, pip sees
+# the cv2 requirement already satisfied and skips the GUI package.
+#
+# MEDIAPIPE VERSION: Pinned to 0.10.21.
+# MediaPipe removed mp.solutions in version 0.10.30+.
+# The existing inference pipeline uses mp.solutions.hands — do NOT upgrade
+# past 0.10.21 without migrating to the MediaPipe Tasks API.
 # ============================================================
 
 # Web framework
@@ -17,13 +24,18 @@ Werkzeug>=2.2.0,<3.0
 # Async server required by Flask-SocketIO async_mode='eventlet'
 eventlet>=0.33.0
 
-# ML / Vision
+# Computer vision — headless FIRST (prevents mediapipe pulling opencv-contrib-python)
+opencv-python-headless>=4.8.0,<5.0
+
+# ML / AI inference
 torch>=2.0.0
-mediapipe>=0.10.0
-opencv-python-headless>=4.8.0
 numpy>=1.24.0
 
-# TTS (optional — silently fails on headless cloud; client-side Web Speech API used instead)
+# MediaPipe — PINNED to last version with mp.solutions API
+# DO NOT upgrade past 0.10.21 without migrating to MediaPipe Tasks API
+mediapipe==0.10.21
+
+# TTS (optional — silently fails on headless cloud; browser Web Speech API is used instead)
 pyttsx3>=2.90
 
 # Video file fallback (optional — used in video_inference.py fallback path)
