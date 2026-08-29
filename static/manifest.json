@@ -1,0 +1,21 @@
+{
+  "short_name": "Vernacular AI",
+  "name": "SIGN-AI Vernacular Smart Classroom Platform",
+  "icons": [
+    {
+      "src": "/static/uploads/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "/static/uploads/icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#0f172a",
+  "theme_color": "#2563eb",
+  "display": "standalone",
+  "orientation": "any"
+}

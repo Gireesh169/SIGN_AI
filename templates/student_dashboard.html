@@ -151,23 +151,87 @@
             <span>Student View: {{ student_name }}</span>
         </div>
         <div class="nav-links">
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <label for="studentLangSelect" style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">🌐 My Preferred Language:</label>
+                <select id="studentLangSelect" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 0.35rem 0.6rem; border-radius: 0.4rem; font-size: 0.85rem;" onchange="onStudentLangChange()">
+                    <option value="en" selected>English</option>
+                    <option value="hi">Hindi (हिन्दी)</option>
+                    <option value="te">Telugu (తెలుగు)</option>
+                    <option value="sat">Santhali (ᱥᱟᱱᱛᱟᱲᱤ)</option>
+                    <option value="hoc">Ho (ᱦᱚ)</option>
+                    <option value="unr">Mundari (ᱢᱩᱱᱰᱟᱨᱤ)</option>
+                </select>
+            </div>
             <span class="badge badge-success">ROOM: {{ room.room_code }}</span>
             <a href="/" class="btn btn-secondary">Leave Room</a>
         </div>
     </nav>
 
+
     <div class="container" style="max-width: 1300px; margin-top: 1.5rem;">
 
-        <!-- SECTION A: CURRENT TEACHER QUESTION -->
+        <!-- SECTION A: CURRENT TEACHER QUESTION (ACCESSIBLE FOR DEAF / NON-SPEAKING STUDENTS) -->
         <div class="accessible-teacher-box">
             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
-                <label id="active-q-label">👨‍🏫 TEACHER LIVE QUESTION / INSTRUCTION</label>
-                <button class="btn btn-secondary" onclick="listenTeacherSpeechAgain()" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;">🔊 Listen Again</button>
+                <label id="active-q-label">👨‍🏫 TEACHER INSTRUCTION (ACCESSIBLE VISUAL TEXT & TRANSLATION)</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <button class="btn btn-secondary" onclick="toggleOriginalView()" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;">📄 Original</button>
+                    <button class="btn btn-secondary" onclick="listenTeacherSpeechAgain()" style="padding: 0.3rem 0.8rem; font-size: 0.85rem;">🔊 Listen</button>
+                </div>
             </div>
-            <div class="accessible-text" id="student-teacher-broadcast">"{{ latest_question.question_text if latest_question else 'Waiting for teacher question...' }}"</div>
+            <div style="font-size: 0.75rem; color: var(--secondary-color); font-weight: 700; text-transform: uppercase;">Teacher Original Speech:</div>
+            <div class="accessible-text" id="student-teacher-broadcast" style="font-size: 1.15rem; margin-bottom: 0.4rem;">"{{ latest_question.question_text if latest_question else 'Waiting for teacher instruction...' }}"</div>
+            
+            <div id="teacher-translated-box" style="border-top: 1px dashed rgba(255,255,255,0.15); padding-top: 0.4rem; margin-top: 0.4rem;">
+                <div style="font-size: 0.75rem; color: #a7f3d0; font-weight: 700; text-transform: uppercase;">Translated (<span id="teacher-target-lang-label">ENGLISH</span>):</div>
+                <div style="font-size: 1.35rem; font-weight: 800; color: #6ee7b7; margin-top: 0.1rem;" id="student-teacher-translated">"{{ latest_question.question_text if latest_question else 'Waiting for teacher instruction...' }}"</div>
+            </div>
+
+            <div id="tts-voice-status-banner" style="display: none; font-size: 0.8rem; color: #fcd34d; margin-top: 0.4rem; font-weight: 600;">
+                ℹ️ Text available. Voice not available on this device.
+            </div>
+
             <div style="font-size: 0.85rem; color: var(--secondary-color); margin-top: 0.5rem; display: flex; justify-content: space-between;">
                 <span id="active-q-id-tag">Question ID: {{ latest_question.question_id if latest_question else 'None' }}</span>
                 <span id="active-q-time-tag">Asked at: {{ latest_question.created_at if latest_question else 'Just now' }}</span>
+            </div>
+        </div>
+
+        <!-- MULTIMODAL STUDENT RESPONSE MODE SELECTOR -->
+        <div style="display: flex; gap: 0.8rem; margin-bottom: 1rem; align-items: center; flex-wrap: wrap;">
+            <label style="font-weight: 700; color: #94a3b8; font-size: 0.9rem;">COMMUNICATION MODE:</label>
+            <button id="btn-mode-sign" class="btn btn-primary" onclick="setResponseMode('sign')">🤟 Sign Language (Accessibility)</button>
+            <button id="btn-mode-speech" class="btn btn-secondary" onclick="setResponseMode('speech')">🎤 Speech</button>
+            <button id="btn-mode-text" class="btn btn-secondary" onclick="setResponseMode('text')">⌨ Text</button>
+        </div>
+
+        <!-- VOICE RESPONSE PANEL -->
+        <div id="voice-response-panel" class="glass-card" style="padding: 1.5rem; margin-bottom: 1.5rem; display: none;">
+            <h4 style="color: #38bdf8; margin-top:0;">🎤 Voice Response Mode</h4>
+            <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">Speak in your preferred language. Speech is transcribed and translated into Teacher Language for the Teacher Dashboard.</p>
+
+            <div style="display: flex; gap: 1rem; align-items: center; margin-bottom: 1rem;">
+                <button id="btn-student-mic" class="btn btn-primary" onclick="toggleStudentSpeech()">🎤 Start Speaking</button>
+                <button class="btn btn-secondary" onclick="sendVoiceAnswer()">✓ Send Voice Answer</button>
+            </div>
+
+            <div class="accessible-teacher-box">
+                <label>SPOKEN RESPONSE TRANSCRIPTION:</label>
+                <div id="student-voice-transcript" style="font-size: 1.2rem; font-weight: 700; color: #fff;">"Click 'Start Speaking' and speak your answer..."</div>
+            </div>
+        </div>
+
+        <!-- TEXT RESPONSE PANEL -->
+        <div id="text-response-panel" class="glass-card" style="padding: 1.5rem; margin-bottom: 1.5rem; display: none;">
+            <h4 style="color: #38bdf8; margin-top:0;">⌨ Text Response Mode</h4>
+            <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">Type your response in your preferred language. It will be translated automatically into Teacher Language.</p>
+
+            <div style="display: flex; gap: 0.8rem; align-items: center;">
+                <input type="text" id="text-answer-input" class="form-control" placeholder="Type your answer here..." style="background: #1e293b; color: #fff; font-size: 1.05rem;">
+                <button class="btn btn-primary" onclick="sendTextAnswer()">✓ Send Text Answer</button>
+            </div>
+        </div>
+                <div id="student-voice-transcript" style="font-size: 1.2rem; font-weight: 700; color: #fff;">"Click 'Start Speaking' and speak your answer..."</div>
             </div>
         </div>
 
@@ -224,10 +288,19 @@
 
                 <!-- DETECTED SIGN RESULT CARD -->
                 <div style="margin-top: 1.5rem; background: rgba(15, 23, 42, 0.8); padding: 1.25rem; border-radius: 0.75rem; border: 1px solid var(--border-color);">
-                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <div>
-                            <label style="font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">DETECTED SIGN ANSWER</label>
-                            <div style="font-size: 1.6rem; font-weight: 800; color: #fff; margin-top: 0.2rem;" id="student-detected-sign">Capturing sign... 0 / 30 frames</div>
+                            <label style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">DETECTED ENGLISH (MODEL OUTPUT)</label>
+                            <div style="font-size: 1.3rem; font-weight: 800; color: #fff; margin-top: 0.1rem;" id="student-detected-sign">Capturing sign... 0 / 30 frames</div>
+                            
+                            <div style="margin-top: 0.5rem;" id="sign-translated-wrapper">
+                                <label style="font-size: 0.75rem; color: #a7f3d0; text-transform: uppercase; font-weight: 700;">TRANSLATED (<span id="student-target-lang-label">ENGLISH</span>)</label>
+                                <div style="font-size: 1.5rem; font-weight: 800; color: #6ee7b7; margin-top: 0.1rem;" id="student-translated-sign">--</div>
+                            </div>
+                            
+                            <div id="tts-voice-status-banner" style="display: none; font-size: 0.8rem; color: #fcd34d; margin-top: 0.4rem; font-weight: 600;">
+                                ⚠️ Voice unavailable for this language on this device.
+                            </div>
                         </div>
                         <div style="text-align: right;">
                             <span class="badge badge-warning" id="student-status-badge">CAPTURING</span>
@@ -242,11 +315,12 @@
                             <label for="auto-send-toggle" style="cursor: pointer; margin: 0;">Auto-Send when stable</label>
                         </div>
                         <div style="display: flex; gap: 0.8rem;">
-                            <button class="btn btn-secondary" onclick="speakText(currentPredictedText)" style="padding: 0.5rem 1rem;">🔊 Listen</button>
+                            <button class="btn btn-secondary" id="btn-speak-sign" onclick="speakSignResult()" style="padding: 0.5rem 1rem;">🔊 Speak</button>
                             <button class="btn btn-primary" id="btn-send-answer" onclick="manualSendAnswer()" style="padding: 0.5rem 1.2rem;">✓ Send Answer</button>
                         </div>
                     </div>
                 </div>
+
 
                 <!-- TOP 3 PREDICTIONS BREAKDOWN -->
                 <div style="margin-top: 1rem; background: rgba(255,255,255,0.03); padding: 1rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
@@ -432,28 +506,13 @@
             }
         }
 
-        // 3. Pre-check: enumerate devices BEFORE getUserMedia.
-        //    Even without permission, browsers list device slots (empty labels but present).
-        //    If 0 videoinput entries → camera hardware not visible to OS at all.
+        // 3. Optional pre-check: enumerate devices for logging (do NOT abort, as Chrome on Mac may return 0 devices before getUserMedia is granted)
         try {
             const preDevices = await navigator.mediaDevices.enumerateDevices();
             const videoDevices = preDevices.filter(d => d.kind === 'videoinput');
             console.log('[CAMERA] Pre-enum: videoinput devices visible =', videoDevices.length);
             if (dbgDeviceCount) dbgDeviceCount.textContent = videoDevices.length;
-
-            if (videoDevices.length === 0) {
-                showCamError(
-                    '⚠️ No camera hardware detected by your browser.\n\n' +
-                    'Possible causes:\n' +
-                    '• macOS System Settings → Privacy & Security → Camera — make sure Google Chrome is listed and enabled\n' +
-                    '• Another app (FaceTime, Zoom, Photo Booth) is exclusively using the camera — quit those apps and try again\n' +
-                    '• The camera is physically disconnected or disabled'
-                );
-                startCamBtn.disabled = false;
-                return;
-            }
         } catch (enumErr) {
-            // enumerateDevices can fail in very restricted contexts — not fatal, continue
             console.warn('[CAMERA] Pre-enum failed (non-fatal):', enumErr.message);
         }
 
@@ -464,53 +523,39 @@
         let constraints;
         const isMobile = /Mobi|Android|iPhone|iPad/i.test(navigator.userAgent);
 
+        // 5. Build candidate constraint chain for maximum device compatibility
+        const candidateConstraints = [];
         if (selectedDeviceId) {
-            const exists = availableDevices.some(d => d.deviceId === selectedDeviceId);
-            if (exists) {
-                console.log('[CAMERA] Requesting camera with deviceId:', selectedDeviceId);
-                constraints = { video: { deviceId: { exact: selectedDeviceId } }, audio: false };
-            } else {
-                console.warn('[CAMERA] Saved deviceId not found — falling back to generic.');
-                selectedDeviceId = '';
-                constraints = isMobile
-                    ? { video: { facingMode: currentFacingMode }, audio: false }
-                    : { video: true, audio: false };
-            }
-        } else if (isMobile) {
-            console.log('[CAMERA] Mobile detected — requesting facingMode:', currentFacingMode);
-            constraints = { video: { facingMode: currentFacingMode }, audio: false };
-        } else {
-            console.log('[CAMERA] Desktop detected — requesting bare video:true');
-            constraints = { video: true, audio: false };
+            candidateConstraints.push({ video: { deviceId: { exact: selectedDeviceId } } });
+        }
+        candidateConstraints.push({ video: true });
+        candidateConstraints.push({ video: { width: { ideal: 1280 }, height: { ideal: 720 } } });
+        candidateConstraints.push({ video: { width: { ideal: 640 }, height: { ideal: 480 } } });
+        if (isMobile) {
+            candidateConstraints.push({ video: { facingMode: currentFacingMode } });
         }
 
-        // 5. Acquire stream — one fallback if the chosen constraints fail
-        let stream;
-        try {
-            stream = await navigator.mediaDevices.getUserMedia(constraints);
-            console.log('[CAMERA] Stream acquired');
-        } catch (err) {
-            // Fallback: if any constraint-related error, try the absolute minimum
-            if (
-                (err.name === 'OverconstrainedError' ||
-                 err.name === 'NotFoundError' ||
-                 err.name === 'ConstraintNotSatisfiedError') &&
-                JSON.stringify(constraints) !== JSON.stringify({ video: true, audio: false })
-            ) {
-                console.warn('[CAMERA] Constraint failed (', err.name, '), retrying with bare video:true');
-                try {
-                    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-                    console.log('[CAMERA] Stream acquired (bare fallback)');
-                } catch (err2) {
-                    handleCamError(err2);
-                    startCamBtn.disabled = false;
-                    return;
+        let stream = null;
+        let lastErr = null;
+
+        for (const c of candidateConstraints) {
+            try {
+                console.log('[CAMERA] Attempting getUserMedia with constraints:', JSON.stringify(c));
+                stream = await navigator.mediaDevices.getUserMedia(c);
+                if (stream) {
+                    console.log('[CAMERA] Stream acquired successfully with constraints:', JSON.stringify(c));
+                    break;
                 }
-            } else {
-                handleCamError(err);
-                startCamBtn.disabled = false;
-                return;
+            } catch (err) {
+                console.warn('[CAMERA] Constraint attempt failed:', JSON.stringify(c), err.name, err.message);
+                lastErr = err;
             }
+        }
+
+        if (!stream) {
+            handleCamError(lastErr || new Error('Unable to access camera'));
+            startCamBtn.disabled = false;
+            return;
         }
 
         // 5. Attach stream to video element
@@ -766,6 +811,218 @@
         }
     }
 
+    /* ── Multilingual Translation & Voice State ── */
+    let selectedLanguage       = 'en';
+    let currentTranslatedText  = '';
+    let currentTeacherEnglish  = "{{ latest_question.question_text if latest_question else '' }}";
+    let currentTeacherSrcLang  = "{{ room.teacher_language or 'en' }}";
+    let currentTeacherTranslated = "{{ latest_question.question_text if latest_question else '' }}";
+    let clientTranslationCache = {};
+    let currentResponseMode    = 'sign';
+    let studentSpeechRecognition = null;
+    let isStudentSpeaking      = false;
+    let studentSpokenText      = '';
+
+    const LANG_NAME_MAP = {
+        'en': 'English', 'hi': 'Hindi', 'te': 'Telugu',
+        'sat': 'Santhali', 'hoc': 'Ho', 'unr': 'Mundari'
+    };
+
+    const LANG_BCP47_MAP = {
+        'en': 'en-US', 'hi': 'hi-IN', 'te': 'te-IN',
+        'sat': 'sat-IN', 'hoc': 'hoc-IN', 'unr': 'unr-IN'
+    };
+
+    function setResponseMode(mode) {
+        currentResponseMode = mode;
+        const btnSign = document.getElementById('btn-mode-sign');
+        const btnSpeech = document.getElementById('btn-mode-speech');
+        const btnText = document.getElementById('btn-mode-text');
+        
+        const voicePanel = document.getElementById('voice-response-panel');
+        const textPanel = document.getElementById('text-response-panel');
+        
+        if (btnSign) btnSign.className = mode === 'sign' ? 'btn btn-primary' : 'btn btn-secondary';
+        if (btnSpeech) btnSpeech.className = mode === 'speech' ? 'btn btn-primary' : 'btn btn-secondary';
+        if (btnText) btnText.className = mode === 'text' ? 'btn btn-primary' : 'btn btn-secondary';
+
+        if (voicePanel) voicePanel.style.display = mode === 'speech' ? 'block' : 'none';
+        if (textPanel) textPanel.style.display = mode === 'text' ? 'block' : 'none';
+    }
+
+    if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        studentSpeechRecognition = new SpeechRecognition();
+        studentSpeechRecognition.continuous = true;
+        studentSpeechRecognition.interimResults = true;
+        studentSpeechRecognition.lang = LANG_BCP47_MAP[selectedLanguage] || 'en-US';
+
+        studentSpeechRecognition.onresult = function(event) {
+            let finalStr = '';
+            for (let i = event.resultIndex; i < event.results.length; ++i) {
+                if (event.results[i].isFinal) {
+                    finalStr += event.results[i][0].transcript;
+                }
+            }
+            if (finalStr.trim().length > 0) {
+                studentSpokenText = finalStr;
+                const transcriptEl = document.getElementById('student-voice-transcript');
+                if (transcriptEl) transcriptEl.textContent = `"${finalStr}"`;
+            }
+        };
+    }
+
+    function toggleStudentSpeech() {
+        if (!studentSpeechRecognition) {
+            alert("Speech recognition not supported in this browser. Please use Google Chrome.");
+            return;
+        }
+        const btn = document.getElementById('btn-student-mic');
+        if (!isStudentSpeaking) {
+            studentSpeechRecognition.lang = LANG_BCP47_MAP[selectedLanguage] || 'en-US';
+            studentSpeechRecognition.start();
+            isStudentSpeaking = true;
+            if (btn) { btn.className = "btn btn-danger"; btn.innerText = "🛑 Stop Mic"; }
+        } else {
+            studentSpeechRecognition.stop();
+            isStudentSpeaking = false;
+            if (btn) { btn.className = "btn btn-primary"; btn.innerText = "🎤 Start Speaking"; }
+        }
+    }
+
+    function sendVoiceAnswer() {
+        if (!studentSpokenText) {
+            alert("Please speak your answer first.");
+            return;
+        }
+        socket.emit('student_answer_event', {
+            question_id: activeQuestionId,
+            room_code: ROOM_CODE,
+            student_name: STUDENT_NAME,
+            response_mode: 'speech',
+            original_prediction: studentSpokenText,
+            target_language: selectedLanguage,
+            confidence: 0.95,
+            status: 'ANSWERED'
+        });
+        alert("Voice Answer Sent to Teacher!");
+    }
+
+    function sendTextAnswer() {
+        const inputEl = document.getElementById('text-answer-input');
+        const textVal = inputEl ? inputEl.value.trim() : '';
+        if (!textVal) {
+            alert("Please type an answer first.");
+            return;
+        }
+        socket.emit('student_answer_event', {
+            question_id: activeQuestionId,
+            room_code: ROOM_CODE,
+            student_name: STUDENT_NAME,
+            response_mode: 'text',
+            original_prediction: textVal,
+            target_language: selectedLanguage,
+            confidence: 1.0,
+            status: 'ANSWERED'
+        });
+        if (inputEl) inputEl.value = '';
+        alert("Text Answer Sent to Teacher!");
+    }
+
+    /* ── Initialize Language Selector on Load ── */
+    document.addEventListener('DOMContentLoaded', () => {
+        const savedLang = localStorage.getItem('sign_ai_student_lang') || 'en';
+        selectedLanguage = savedLang;
+        const selectEl = document.getElementById('studentLangSelect');
+        if (selectEl) selectEl.value = savedLang;
+        
+        updateLangLabels();
+        if (currentTeacherEnglish) {
+            translateTeacherQuestion(currentTeacherEnglish, currentTeacherSrcLang);
+        }
+    });
+
+    function updateLangLabels() {
+        const langName = (LANG_NAME_MAP[selectedLanguage] || 'English').toUpperCase();
+        const teacherTag = document.getElementById('teacher-target-lang-label');
+        const signTag = document.getElementById('student-target-lang-label');
+        if (teacherTag) teacherTag.textContent = langName;
+        if (signTag) signTag.textContent = langName;
+    }
+
+    function onStudentLangChange() {
+        const selectEl = document.getElementById('studentLangSelect');
+        if (!selectEl) return;
+        selectedLanguage = selectEl.value;
+        localStorage.setItem('sign_ai_student_lang', selectedLanguage);
+        
+        updateLangLabels();
+        socket.emit('set_language_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, target_language: selectedLanguage });
+
+        // Translate active teacher question immediately into newly selected language
+        if (currentTeacherEnglish) {
+            translateTeacherQuestion(currentTeacherEnglish, currentTeacherSrcLang);
+        }
+
+        // Translate active sign prediction if stable
+        if (currentPredictedText && !currentPredictedText.includes('Capturing') && !currentPredictedText.includes('No hands')) {
+            translateStudentSign(currentPredictedText);
+        }
+    }
+
+    async function fetchTranslation(text, targetLang, srcLang = 'hi') {
+        if (!text || text.trim() === '') {
+            return text;
+        }
+        if (targetLang === srcLang) {
+            return text;
+        }
+        const cacheKey = text.trim().toLowerCase() + '_' + srcLang + '_' + targetLang;
+        if (clientTranslationCache[cacheKey]) {
+            return clientTranslationCache[cacheKey];
+        }
+
+        try {
+            const res = await fetch('/api/translate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: text, source_language: srcLang, target_language: targetLang })
+            });
+            if (res.ok) {
+                const data = await res.json();
+                const translated = data.translated_text || text;
+                clientTranslationCache[cacheKey] = translated;
+                return translated;
+            }
+        } catch (e) {
+            console.warn('[TRANSLATE] Client translation fetch error:', e);
+        }
+        return text;
+    }
+
+    async function translateTeacherQuestion(text, srcLang) {
+        currentTeacherEnglish = text;
+        if (srcLang) currentTeacherSrcLang = srcLang;
+        const translated = await fetchTranslation(text, selectedLanguage, currentTeacherSrcLang || 'hi');
+        currentTeacherTranslated = translated;
+
+        const transEl = document.getElementById('student-teacher-translated');
+        if (transEl) {
+            transEl.textContent = `"${translated}"`;
+        }
+    }
+
+    async function translateStudentSign(text) {
+        if (!text || text.includes('Capturing') || text.includes('No hands')) return;
+        const translated = await fetchTranslation(text, selectedLanguage, 'en');
+        currentTranslatedText = translated;
+
+        const signTransEl = document.getElementById('student-translated-sign');
+        if (signTransEl) {
+            signTransEl.textContent = `"${translated}"`;
+        }
+    }
+
     function handlePredictionResult(data) {
         const predictedText = data.predicted_text || data.sentence || '';
         const confidence    = data.confidence || 0.0;
@@ -791,6 +1048,9 @@
         if (isStable && !isUncertain && confidence >= 35 && predictedText) {
             badge.className   = 'badge badge-success';
             badge.textContent = 'CONFIRMED';
+
+            // Requirement 10: Translate ONCE when sign prediction is stable
+            translateStudentSign(predictedText);
 
             const autoSend = document.getElementById('auto-send-toggle').checked;
             if (autoSend && predictedText !== lastAutoSentAnswer) {
@@ -827,7 +1087,7 @@
             if (dbgDeviceCount) dbgDeviceCount.textContent = availableDevices.length;
 
             if (availableDevices.length === 0) {
-                showCamError('No camera device detected. Check that a camera is connected and not disabled.');
+                console.warn('[CAMERA] No videoinput devices enumerated yet.');
                 return;
             }
 
@@ -965,17 +1225,24 @@
        SOCKET.IO — Teacher broadcasts
     ============================================================ */
     socket.on('teacher_question_broadcast', function(data) {
-        activeQuestionId = data.question_id;
-        document.getElementById('student-teacher-broadcast').textContent = `"${data.question_text}"`;
-        document.getElementById('active-q-id-tag').textContent = `Question ID: ${data.question_id}`;
-        document.getElementById('active-q-time-tag').textContent = `Asked at: ${data.timestamp}`;
+        activeQuestionId = data.question_id || data.message_id;
+        const qText = data.original_text || data.question_text || '';
+        document.getElementById('student-teacher-broadcast').textContent = `"${qText}"`;
+        document.getElementById('active-q-id-tag').textContent = `Question ID: ${activeQuestionId}`;
+        document.getElementById('active-q-time-tag').textContent = `Asked at: ${data.timestamp || 'Just now'}`;
 
         const btn = document.getElementById('btn-send-answer');
-        btn.textContent = '✓ Send Answer';
-        btn.className = 'btn btn-primary';
+        if (btn) {
+            btn.textContent = '✓ Send Answer';
+            btn.className = 'btn btn-primary';
+        }
 
         socket.emit('student_status_event', { room_code: ROOM_CODE, student_name: STUDENT_NAME, status: 'WAITING' });
-        speakText(data.question_text);
+
+        // Translate teacher question into student's target language
+        translateTeacherQuestion(qText).then(() => {
+            speakText(currentTeacherTranslated, selectedLanguage);
+        });
     });
 
     /* ============================================================
@@ -999,46 +1266,123 @@
         submittedQuestionsMap[activeQuestionId] = answerText;
 
         socket.emit('student_answer_event', {
-            question_id:  activeQuestionId,
-            room_code:    ROOM_CODE,
-            student_name: STUDENT_NAME,
-            answer:       answerText,
-            confidence:   confVal / 100.0,
-            status:       'ANSWERED'
+            question_id:         activeQuestionId,
+            room_id:             ROOM_CODE,
+            room_code:           ROOM_CODE,
+            student_name:        STUDENT_NAME,
+            original_prediction: answerText,
+            answer:              answerText,
+            translated_text:     currentTranslatedText || answerText,
+            target_language:     selectedLanguage,
+            confidence:          confVal / 100.0,
+            status:              'ANSWERED'
         });
 
         const btn = document.getElementById('btn-send-answer');
-        btn.textContent = '✓ Answer Submitted (Update)';
-        btn.className = 'btn btn-success';
+        if (btn) {
+            btn.textContent = '✓ Answer Submitted (Update)';
+            btn.className = 'btn btn-success';
+        }
 
         addMyActivityItem({
             question_text: document.getElementById('student-teacher-broadcast').textContent.replace(/"/g, ''),
-            message:       answerText,
+            message:       currentTranslatedText || answerText,
             action_type:   isUpdate ? 'ANSWER_UPDATED' : 'ANSWER_SENT',
             confidence:    confVal / 100.0,
             timestamp:     new Date().toLocaleTimeString()
         });
 
-        speakText(answerText);
+        speakSignResult();
     }
 
     /* ============================================================
-       UI HELPERS
+       TEXT-TO-SPEECH (TTS) WITH REQUIREMENT 8 VOICE FALLBACK
     ============================================================ */
     function listenTeacherSpeechAgain() {
-        const text = document.getElementById('student-teacher-broadcast').textContent.replace(/"/g, '');
-        speakText(text);
+        if (currentTeacherTranslated) {
+            speakText(currentTeacherTranslated, selectedLanguage);
+        } else {
+            const text = document.getElementById('student-teacher-broadcast').textContent.replace(/"/g, '');
+            speakText(text, 'en');
+        }
     }
 
-    function speakText(text) {
-        if ('speechSynthesis' in window && text && !text.includes('Waiting for')) {
-            window.speechSynthesis.cancel();
-            const utt = new SpeechSynthesisUtterance(text);
-            utt.rate  = 0.95;
-            utt.pitch = 1.0;
-            utt.lang  = 'en-US';
-            window.speechSynthesis.speak(utt);
+    function speakSignResult() {
+        const textToSpeak = currentTranslatedText || currentPredictedText;
+        speakText(textToSpeak, selectedLanguage);
+    }
+
+    function getBrowserVoiceForLang(langCode) {
+        if (!('speechSynthesis' in window)) return null;
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices || voices.length === 0) return null;
+
+        const targetBcp = LANG_BCP47_MAP[langCode] || langCode;
+        const targetPrefix = langCode.toLowerCase();
+
+        // 1. Exact BCP-47 match (e.g. 'te-IN')
+        let match = voices.find(v => v.lang === targetBcp || v.lang.replace('_', '-') === targetBcp);
+        if (match) return match;
+
+        // 2. Language prefix match (e.g. 'te')
+        match = voices.find(v => v.lang.toLowerCase().startsWith(targetPrefix));
+        if (match) return match;
+
+        // 3. Voice name match (e.g. voice name contains "Telugu")
+        const langName = (LANG_NAME_MAP[langCode] || '').toLowerCase();
+        if (langName) {
+            match = voices.find(v => v.name.toLowerCase().includes(langName));
+            if (match) return match;
         }
+
+        return null;
+    }
+
+    function speakText(text, langCode = 'en') {
+        if (!('speechSynthesis' in window) || !text || text.includes('Waiting for') || text.includes('Capturing')) {
+            return;
+        }
+
+        const banner = document.getElementById('tts-voice-status-banner');
+        window.speechSynthesis.cancel();
+
+        const voice = getBrowserVoiceForLang(langCode);
+
+        // Requirement 8: Check browser voice availability
+        if (langCode !== 'en' && !voice) {
+            if (banner) {
+                banner.style.display = 'block';
+                banner.textContent = '⚠️ Voice unavailable for this language on this device.';
+            }
+            // Still display text, and speak using default voice gracefully
+            const fallbackUtt = new SpeechSynthesisUtterance(text);
+            fallbackUtt.rate = 0.95;
+            window.speechSynthesis.speak(fallbackUtt);
+            return;
+        } else {
+            if (banner) {
+                banner.style.display = 'none';
+            }
+        }
+
+        const utt = new SpeechSynthesisUtterance(text);
+        if (voice) {
+            utt.voice = voice;
+            utt.lang = voice.lang;
+        } else {
+            utt.lang = LANG_BCP47_MAP[langCode] || 'en-US';
+        }
+        utt.rate = 0.95;
+        utt.pitch = 1.0;
+
+        window.speechSynthesis.speak(utt);
+    }
+
+    // Ensure voices are loaded by browser
+    if ('speechSynthesis' in window) {
+        window.speechSynthesis.onvoiceschanged = function() {
+            window.speechSynthesis.getVoices();
+        };
     }
 
     function addMyActivityItem(item) {
@@ -1064,3 +1408,4 @@
     </script>
 </body>
 </html>
+

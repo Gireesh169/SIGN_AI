@@ -152,6 +152,78 @@ class ClassroomDatabase:
             )
         ''')
 
+        # 10. Vernacular Curriculum Lessons Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS curriculum_lessons (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                grade TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                topic_id TEXT NOT NULL,
+                target_language TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
+        # 11. Vernacular Worksheets Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS worksheets (
+                worksheet_id TEXT PRIMARY KEY,
+                grade TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                topic TEXT NOT NULL,
+                target_language TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
+        # 12. Vernacular Flashcards Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS flashcards (
+                pack_id TEXT NOT NULL,
+                target_language TEXT NOT NULL,
+                content_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
+        # 13. Offline Sync Logs Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS sync_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                sync_timestamp TEXT NOT NULL,
+                status TEXT NOT NULL,
+                details_json TEXT
+            )
+        ''')
+
+        # Vernacular Smart Classroom Schema Migrations (Safe column additions)
+        migrations = [
+            ("rooms", "source_language", "TEXT DEFAULT 'hi'"),
+            ("rooms", "target_language", "TEXT DEFAULT 'sat'"),
+            ("rooms", "offline_mode", "INTEGER DEFAULT 0"),
+            ("questions", "source_language", "TEXT DEFAULT 'hi'"),
+            ("questions", "target_language", "TEXT DEFAULT 'sat'"),
+            ("questions", "translated_text", "TEXT"),
+            ("questions", "latency_ms", "REAL DEFAULT 0.0"),
+            ("student_responses", "response_mode", "TEXT DEFAULT 'speech'"),
+            ("student_responses", "latency_ms", "REAL DEFAULT 0.0"),
+            ("room_members", "preferred_language", "TEXT DEFAULT 'en'"),
+            ("student_responses", "original_prediction", "TEXT"),
+            ("student_responses", "target_language", "TEXT DEFAULT 'en'"),
+            ("student_responses", "translated_text", "TEXT"),
+            ("student_sign_logs", "target_language", "TEXT DEFAULT 'en'"),
+            ("student_sign_logs", "translated_text", "TEXT"),
+            ("student_activity_logs", "target_language", "TEXT DEFAULT 'en'"),
+            ("student_activity_logs", "translated_text", "TEXT")
+        ]
+        for tbl, col, col_def in migrations:
+            try:
+                cursor.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {col_def}")
+            except sqlite3.OperationalError:
+                pass  # Column already exists
+
         conn.commit()
         conn.close()
 
@@ -167,16 +239,16 @@ class ClassroomDatabase:
             if not row:
                 return code
 
-    def create_room(self, teacher_name, room_name, subject, description="", max_students=30, password=""):
+    def create_room(self, teacher_name, room_name, subject, description="", max_students=30, password="", teacher_language="en"):
         code = self.generate_room_code()
         created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO rooms (room_code, teacher_name, room_name, subject, description, max_students, password, created_at, status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active')
-        ''', (code, teacher_name, room_name, subject, description, max_students, password, created_at))
+            INSERT INTO rooms (room_code, teacher_name, room_name, subject, description, max_students, password, created_at, status, source_language)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'active', ?)
+        ''', (code, teacher_name, room_name, subject, description, max_students, password, created_at, teacher_language))
         conn.commit()
         conn.close()
 
@@ -187,6 +259,8 @@ class ClassroomDatabase:
             'subject': subject,
             'description': description,
             'max_students': max_students,
+            'teacher_language': teacher_language,
+            'source_language': teacher_language,
             'created_at': created_at,
             'status': 'active'
         }
@@ -194,7 +268,7 @@ class ClassroomDatabase:
     def get_room(self, room_code):
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT room_code, teacher_name, room_name, subject, description, max_students, password, created_at, status FROM rooms WHERE room_code = ?", (room_code,))
+        cursor.execute("SELECT room_code, teacher_name, room_name, subject, description, max_students, password, created_at, status, source_language FROM rooms WHERE room_code = ?", (room_code,))
         row = cursor.fetchone()
         conn.close()
 
@@ -208,11 +282,13 @@ class ClassroomDatabase:
                 'max_students': row[5],
                 'password': row[6],
                 'created_at': row[7],
-                'status': row[8]
+                'status': row[8],
+                'teacher_language': row[9] if len(row) > 9 and row[9] else 'en',
+                'source_language': row[9] if len(row) > 9 and row[9] else 'en'
             }
         return None
 
-    def join_room(self, room_code, student_name):
+    def join_room(self, room_code, student_name, preferred_language='en'):
         room = self.get_room(room_code)
         if not room:
             return False, "Room Code not found"
@@ -221,22 +297,40 @@ class ClassroomDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO room_members (room_code, student_name, status, joined_at)
-            VALUES (?, ?, 'online', ?)
-        ''', (room_code, student_name, joined_at))
+            INSERT INTO room_members (room_code, student_name, status, joined_at, preferred_language)
+            VALUES (?, ?, 'online', ?, ?)
+        ''', (room_code, student_name, joined_at, preferred_language))
         conn.commit()
         conn.close()
 
         return True, "Joined successfully"
 
+    def update_member_language(self, room_code, student_name, preferred_language):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE room_members
+            SET preferred_language = ?
+            WHERE room_code = ? AND student_name = ?
+        ''', (preferred_language, room_code, student_name))
+        conn.commit()
+        conn.close()
+
     def get_room_members(self, room_code):
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, student_name, status, joined_at FROM room_members WHERE room_code = ? ORDER BY id ASC", (room_code,))
+        cursor.execute("SELECT id, student_name, status, joined_at, preferred_language FROM room_members WHERE room_code = ? ORDER BY id ASC", (room_code,))
         rows = cursor.fetchall()
         conn.close()
 
-        return [{'id': r[0], 'student_name': r[1], 'status': r[2], 'joined_at': r[3]} for r in rows]
+        return [{
+            'id': r[0],
+            'student_name': r[1],
+            'status': r[2],
+            'joined_at': r[3],
+            'preferred_language': r[4] if len(r) > 4 and r[4] else 'en'
+        } for r in rows]
+
 
     # =========================================================================
     # QUESTION & ANSWER SYSTEM METHODS
@@ -315,8 +409,9 @@ class ClassroomDatabase:
             })
         return questions
 
-    def submit_or_update_student_response(self, question_id, room_code, student_name, answer, confidence, status="ANSWERED"):
+    def submit_or_update_student_response(self, question_id, room_code, student_name, answer, confidence, status="ANSWERED", target_language="en", translated_text="", original_prediction=None):
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        orig_pred = original_prediction if original_prediction is not None else answer
 
         conn = self._get_connection()
         cursor = conn.cursor()
@@ -331,28 +426,31 @@ class ClassroomDatabase:
             is_update = True
             cursor.execute('''
                 UPDATE student_responses
-                SET predicted_answer = ?, confidence = ?, status = ?, updated_at = ?
+                SET predicted_answer = ?, original_prediction = ?, target_language = ?, translated_text = ?, confidence = ?, status = ?, updated_at = ?
                 WHERE id = ?
-            ''', (answer, float(confidence), status, ts, row[0]))
+            ''', (answer, orig_pred, target_language, translated_text, float(confidence), status, ts, row[0]))
         else:
             # INSERT new answer
             cursor.execute('''
-                INSERT INTO student_responses (question_id, room_code, student_name, predicted_answer, confidence, status, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (question_id, room_code, student_name, answer, float(confidence), status, ts, ts))
+                INSERT INTO student_responses (question_id, room_code, student_name, predicted_answer, original_prediction, target_language, translated_text, confidence, status, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (question_id, room_code, student_name, answer, orig_pred, target_language, translated_text, float(confidence), status, ts, ts))
 
         conn.commit()
         conn.close()
 
         # Also Log Activity
         action_type = "ANSWER_UPDATED" if is_update else "ANSWER_SENT"
-        self.log_student_activity(student_name, room_code, question_id, action_type, answer, confidence)
+        self.log_student_activity(student_name, room_code, question_id, action_type, answer, confidence, target_language=target_language, translated_text=translated_text)
 
         return {
             'question_id': question_id,
             'room_code': room_code,
             'student_name': student_name,
             'predicted_answer': answer,
+            'original_prediction': orig_pred,
+            'target_language': target_language,
+            'translated_text': translated_text,
             'confidence': float(confidence),
             'status': status,
             'is_update': is_update,
@@ -362,7 +460,7 @@ class ClassroomDatabase:
     def get_responses_by_question(self, question_id):
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, question_id, room_code, student_name, predicted_answer, confidence, status, updated_at FROM student_responses WHERE question_id = ? ORDER BY updated_at DESC", (question_id,))
+        cursor.execute("SELECT id, question_id, room_code, student_name, predicted_answer, confidence, status, updated_at, original_prediction, target_language, translated_text FROM student_responses WHERE question_id = ? ORDER BY updated_at DESC", (question_id,))
         rows = cursor.fetchall()
         conn.close()
 
@@ -374,17 +472,20 @@ class ClassroomDatabase:
             'predicted_answer': r[4],
             'confidence': float(r[5]),
             'status': r[6],
-            'updated_at': r[7]
+            'updated_at': r[7],
+            'original_prediction': r[8] if len(r) > 8 and r[8] else r[4],
+            'target_language': r[9] if len(r) > 9 and r[9] else 'en',
+            'translated_text': r[10] if len(r) > 10 and r[10] else ''
         } for r in rows]
 
-    def log_student_activity(self, student_name, room_code, question_id, action_type, message, confidence=0.0):
+    def log_student_activity(self, student_name, room_code, question_id, action_type, message, confidence=0.0, target_language="en", translated_text=""):
         ts = datetime.now().strftime("%H:%M:%S")
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            INSERT INTO student_activity_logs (student_name, room_code, question_id, action_type, message, confidence, timestamp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-        ''', (student_name, room_code, question_id, action_type, message, float(confidence), ts))
+            INSERT INTO student_activity_logs (student_name, room_code, question_id, action_type, message, confidence, timestamp, target_language, translated_text)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (student_name, room_code, question_id, action_type, message, float(confidence), ts, target_language, translated_text))
         conn.commit()
         conn.close()
 
@@ -392,7 +493,7 @@ class ClassroomDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute('''
-            SELECT a.id, a.student_name, a.room_code, a.question_id, a.action_type, a.message, a.confidence, a.timestamp, q.question_text
+            SELECT a.id, a.student_name, a.room_code, a.question_id, a.action_type, a.message, a.confidence, a.timestamp, q.question_text, a.target_language, a.translated_text
             FROM student_activity_logs a
             LEFT JOIN questions q ON a.question_id = q.question_id
             WHERE a.room_code = ? AND a.student_name = ?
@@ -410,7 +511,9 @@ class ClassroomDatabase:
             'message': r[5],
             'confidence': float(r[6]),
             'timestamp': r[7],
-            'question_text': r[8] or "Classroom Instruction"
+            'question_text': r[8] or "Classroom Instruction",
+            'target_language': r[9] if len(r) > 9 and r[9] else 'en',
+            'translated_text': r[10] if len(r) > 10 and r[10] else ''
         } for r in rows]
 
     def add_teacher_message(self, room_code, message_text):
@@ -439,7 +542,7 @@ class ClassroomDatabase:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        query = "SELECT room_code, student_name, predicted_answer, confidence, status, updated_at FROM student_responses WHERE 1=1"
+        query = "SELECT room_code, student_name, predicted_answer, confidence, status, updated_at, original_prediction, target_language, translated_text FROM student_responses WHERE 1=1"
         params = []
 
         if room_code:
@@ -462,8 +565,12 @@ class ClassroomDatabase:
             'detected_sentence': r[2],
             'confidence': float(r[3]),
             'status': r[4],
-            'timestamp': r[5]
+            'timestamp': r[5],
+            'original_prediction': r[6] if len(r) > 6 and r[6] else r[2],
+            'target_language': r[7] if len(r) > 7 and r[7] else 'en',
+            'translated_text': r[8] if len(r) > 8 and r[8] else ''
         } for r in rows]
+
 
     def add_student_sign_log(self, room_code, student_name, sentence, confidence, status="CONFIRMED"):
         ts = datetime.now().strftime("%H:%M:%S")

@@ -90,3 +90,9 @@ def normalize_sequence_features(seq_arr):
             
     return X_norm if is_3d else X_norm[0]
 
+
+# Multilingual Translation Configuration
+DEFAULT_LANGUAGE = 'en'
+SUPPORTED_LANGUAGES = ['en', 'te', 'hi', 'ta', 'kn', 'ml', 'bn', 'mr']
+
+

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ worksheet.title }} | SIGN-AI Vernacular Worksheet</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        @page { size: A4; margin: 15mm; }
+        body {
+            font-family: 'Inter', sans-serif;
+            color: #1e293b;
+            background: #fff;
+            margin: 0;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .header {
+            border-bottom: 3px solid #2563eb;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .title-area h1 {
+            font-size: 1.5rem;
+            margin: 0 0 6px 0;
+            color: #0f172a;
+        }
+        .title-area p {
+            margin: 0;
+            font-size: 0.9rem;
+            color: #64748b;
+        }
+        .student-box {
+            border: 1px solid #cbd5e1;
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            line-height: 1.6;
+        }
+        .instructions {
+            background: #f8fafc;
+            border-left: 4px solid #3b82f6;
+            padding: 10px 15px;
+            margin-bottom: 24px;
+            font-size: 0.95rem;
+        }
+        .question-card {
+            margin-bottom: 24px;
+            padding-bottom: 16px;
+            border-bottom: 1px dashed #e2e8f0;
+        }
+        .question-title {
+            font-weight: 700;
+            font-size: 1.05rem;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+        .question-target {
+            font-size: 1rem;
+            color: #2563eb;
+            margin-bottom: 12px;
+        }
+        .prompt-box {
+            background: #f1f5f9;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            letter-spacing: 2px;
+            display: inline-block;
+        }
+        .matching-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+        .matching-table th, .matching-table td {
+            border: 1px solid #cbd5e1;
+            padding: 8px 12px;
+            text-align: left;
+        }
+        .matching-table th { background: #f8fafc; }
+        .no-print {
+            margin-bottom: 20px;
+        }
+        @media print {
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="no-print">
+        <button onclick="window.print()" style="background:#2563eb; color:#fff; border:none; padding:10px 20px; font-size:1rem; border-radius:6px; cursor:pointer;">
+            🖨️ Print / Save as PDF
+        </button>
+        <button onclick="window.close()" style="background:#64748b; color:#fff; border:none; padding:10px 20px; font-size:1rem; border-radius:6px; cursor:pointer; margin-left:10px;">
+            Close Preview
+        </button>
+    </div>
+
+    <div class="header">
+        <div class="title-area">
+            <h1>{{ worksheet.title }}</h1>
+            <p><strong>Grade:</strong> {{ worksheet.grade }} | <strong>Subject:</strong> {{ worksheet.subject }} | <strong>Difficulty:</strong> {{ worksheet.difficulty }}</p>
+        </div>
+        <div class="student-box">
+            <div><strong>Student Name:</strong> ________________________</div>
+            <div><strong>Date:</strong> _________________</div>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <div><strong>Hindi Instruction:</strong> {{ worksheet.instructions.hindi }}</div>
+        <div style="color: #2563eb; margin-top: 4px;"><strong>Target Language:</strong> {{ worksheet.instructions.target }}</div>
+    </div>
+
+    {% for q in worksheet.questions %}
+    <div class="question-card">
+        <div class="question-title">{{ q.title_hi }}</div>
+        <div class="question-target">{{ q.title_target }}</div>
+        
+        {% if q.type == 'fill_in_sequence' or q.type == 'counting' %}
+        <div class="prompt-box">{{ q.prompt }}</div>
+        
+        {% elif q.type == 'matching' %}
+        <table class="matching-table">
+            <thead>
+                <tr>
+                    <th>Hindi Word</th>
+                    <th>Draw Line / Match</th>
+                    <th>Target Language Word</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for pair in q.pairs %}
+                <tr>
+                    <td><strong>{{ pair.hindi }}</strong> ({{ pair.english }})</td>
+                    <td style="text-align: center; color: #94a3b8;">— — — — —</td>
+                    <td><strong>{{ pair.target }}</strong></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% endif %}
+    </div>
+    {% endfor %}
+</body>
+</html>

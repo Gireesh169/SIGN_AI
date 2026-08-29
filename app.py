@@ -32,6 +32,11 @@ from src.realtime_engine import RealTimeInferenceEngine
 from src.video_inference import run_video_file_inference
 from src.database import ClassroomDatabase
 from src.conversation_memory import ConversationMemoryStore
+from src.translation_engine import translate, get_supported_languages, SUPPORTED_LANGUAGES
+from src.offline_sync import get_sync_manager
+from src.curriculum_assistant import generate_bilingual_lesson, list_curriculum_options
+from src.worksheet_generator import generate_bilingual_worksheet, get_worksheet_by_id
+from src.flashcard_generator import generate_flashcards, get_available_flashcard_packs
 
 # ---------------------------------------------------------------------------
 # Flask application setup
@@ -107,19 +112,18 @@ def health_check():
     GET /health — Returns service status and model load state.
     Safe: does not expose internal paths or secrets.
     """
-    model_loaded = _engine is not None
-    if model_loaded:
-        return jsonify({
-            'status': 'ok',
-            'service': 'sign-ai',
-            'model_loaded': True
-        }), 200
-    else:
-        return jsonify({
-            'status': 'degraded',
-            'service': 'sign-ai',
-            'model_loaded': False
-        }), 200
+    try:
+        eng = get_engine()
+        model_loaded = eng is not None
+    except Exception as e:
+        logger.warning('Health check: engine not initialized: %s', e)
+        model_loaded = False
+
+    return jsonify({
+        'status': 'ok' if model_loaded else 'degraded',
+        'service': 'sign-ai',
+        'model_loaded': model_loaded
+    }), 200
 
 # =========================================================================
 # CLASSROOM PAGE ROUTES
@@ -225,6 +229,102 @@ def student_activity_endpoint(room_code, student_name):
     return jsonify({'activity_logs': logs})
 
 # =========================================================================
+# VERNACULAR SMART CLASSROOM REST APIS & OFFLINE SYNC
+# =========================================================================
+@app.route('/api/languages', methods=['GET'])
+def get_languages_endpoint():
+    """Returns dictionary of supported languages and metadata."""
+    return jsonify({
+        'status': 'success',
+        'languages': get_supported_languages(),
+        'default_language': 'sat'
+    })
+
+@app.route('/api/translate', methods=['POST'])
+def translate_endpoint():
+    """
+    POST /api/translate — Real-time Vernacular Translation.
+    Body: { "text": "...", "source_language": "hi", "target_language": "sat" }
+    """
+    data = request.json or {}
+    text = data.get('text', '').strip()
+    src_lang = data.get('source_language', 'hi').strip()
+    target_lang = data.get('target_language', 'sat').strip()
+
+    if not text:
+        return jsonify({'error': 'Missing text parameter', 'status': 'failed'}), 400
+
+    result = translate(text, src_lang, target_lang)
+    return jsonify(result)
+
+@app.route('/api/sync/status', methods=['GET'])
+def sync_status_endpoint():
+    """GET /api/sync/status — Returns offline readiness & sync details."""
+    mgr = get_sync_manager()
+    return jsonify(mgr.get_status())
+
+@app.route('/api/sync/trigger', methods=['POST'])
+def sync_trigger_endpoint():
+    """POST /api/sync/trigger — Synchronizes curriculum, worksheets, and flashcards for offline mode."""
+    mgr = get_sync_manager()
+    res = mgr.trigger_synchronization()
+    return jsonify(res)
+
+@app.route('/api/curriculum/options', methods=['GET'])
+def curriculum_options_endpoint():
+    """GET /api/curriculum/options — Returns available grades, subjects, and topics."""
+    return jsonify(list_curriculum_options())
+
+@app.route('/api/curriculum/generate_lesson', methods=['POST'])
+def generate_lesson_endpoint():
+    """POST /api/curriculum/generate_lesson — Generates bilingual lesson plan."""
+    data = request.json or {}
+    grade = data.get('grade', 'class_1')
+    subject = data.get('subject', 'fln_numeracy')
+    topic_id = data.get('topic_id', 'c1_num_1_10')
+    target_lang = data.get('target_language', 'sat')
+    
+    lesson = generate_bilingual_lesson(grade, subject, topic_id, target_lang)
+    return jsonify(lesson)
+
+@app.route('/api/worksheet/generate', methods=['POST'])
+def generate_worksheet_endpoint():
+    """POST /api/worksheet/generate — Generates bilingual worksheet."""
+    data = request.json or {}
+    grade = data.get('grade', 'Class 1')
+    subject = data.get('subject', 'Numeracy')
+    topic = data.get('topic', 'Numbers 1-10')
+    target_lang = data.get('target_language', 'sat')
+    difficulty = data.get('difficulty', 'Medium')
+
+    worksheet = generate_bilingual_worksheet(grade, subject, topic, target_lang, difficulty)
+    return jsonify(worksheet)
+
+@app.route('/worksheet/print/<worksheet_id>')
+def print_worksheet_page(worksheet_id):
+    """GET /worksheet/print/<worksheet_id> — Renders printable bilingual worksheet HTML."""
+    worksheet = get_worksheet_by_id(worksheet_id)
+    if not worksheet:
+        # Generate temporary worksheet if missing
+        worksheet = generate_bilingual_worksheet("Class 1", "Numeracy", "Numbers 1-10", "sat", "Medium")
+    return render_template('worksheet_print.html', worksheet=worksheet)
+
+@app.route('/api/flashcards/packs', methods=['GET'])
+def flashcard_packs_endpoint():
+    """GET /api/flashcards/packs — Returns available flashcard categories."""
+    return jsonify({'packs': get_available_flashcard_packs()})
+
+@app.route('/api/flashcards/generate', methods=['POST'])
+def generate_flashcards_endpoint():
+    """POST /api/flashcards/generate — Generates visual flashcards with audio support."""
+    data = request.json or {}
+    pack_id = data.get('pack_id', 'classroom_objects')
+    target_lang = data.get('target_language', 'sat')
+    
+    cards = generate_flashcards(pack_id, target_lang)
+    return jsonify(cards)
+
+# =========================================================================
 # REAL-TIME SOCKET.IO EVENT HANDLERS
 # =========================================================================
 @socketio.on('connect')
@@ -240,37 +340,120 @@ def handle_join_room_event(data):
     room_code = data.get('room_code')
     user_name = data.get('user_name')
     role = data.get('role', 'student')
+    pref_lang = data.get('preferred_language', 'sat')
     if room_code:
         socket_join_room(room_code)
-        logger.info('Socket.IO: %s "%s" joined room %s', role, user_name, room_code)
+        logger.info('Socket.IO: %s "%s" joined room %s (lang: %s)', role, user_name, room_code, pref_lang)
         if role == 'student':
-            emit('student_joined_event', {'student_name': user_name, 'room_code': room_code}, to=room_code)
+            db.update_member_language(room_code, user_name, pref_lang)
+            emit('student_joined_event', {'student_name': user_name, 'room_code': room_code, 'preferred_language': pref_lang}, to=room_code)
 
 @socketio.on('teacher_speech_event')
 def handle_teacher_speech_event(data):
+    start_t = time.perf_counter()
     room_code = data.get('room_code')
-    message = data.get('message')
+    message = data.get('message', '').strip()
     teacher_name = data.get('teacher_name', 'Teacher')
+    
+    room = db.get_room(room_code) if room_code else None
+    src_lang = data.get('source_language') or (room.get('teacher_language') if room else 'en')
 
     if room_code and message:
         # Create Question Entry in DB & get question_id
         q_data = db.add_question(room_code, teacher_name, message)
-        logger.info('Teacher speech broadcast: room=%s teacher=%s', room_code, teacher_name)
-        emit('teacher_question_broadcast', q_data, to=room_code)
+        
+        # Determine fallback translation for global broadcast
+        default_target = data.get('target_language', 'sat')
+        tr_res = translate(message, src_lang, default_target)
+        translated_text = tr_res.get('translated_text', message)
+        measured_latency = round((time.perf_counter() - start_t) * 1000.0 + tr_res.get('latency_ms', 0.0), 1)
+        
+        logger.info('Teacher speech broadcast: room=%s teacher=%s src_lang=%s (lat=%.1fms)', room_code, teacher_name, src_lang, measured_latency)
+
+        broadcast_payload = {
+            'message_id': q_data['question_id'],
+            'question_id': q_data['question_id'],
+            'room_id': room_code,
+            'room_code': room_code,
+            'original_text': message,
+            'question_text': message,
+            'source_language': src_lang,
+            'target_language': default_target,
+            'translated_text': translated_text,
+            'latency_ms': measured_latency,
+            'backend_used': tr_res.get('backend_used', 'offline_canonical_dictionary'),
+            'teacher_name': teacher_name,
+            'timestamp': q_data['timestamp'],
+            'created_at': q_data['created_at']
+        }
+        emit('teacher_question_broadcast', broadcast_payload, to=room_code)
 
 @socketio.on('student_answer_event')
 def handle_student_answer_event(data):
+    start_t = time.perf_counter()
     question_id = data.get('question_id')
-    room_code = data.get('room_code')
+    room_code = data.get('room_code') or data.get('room_id')
     student_name = data.get('student_name')
-    answer = data.get('answer')
+    response_mode = data.get('response_mode', 'speech')  # 'speech', 'sign', 'text'
+    original_pred = data.get('original_prediction') or data.get('answer', '')
+    translated_text = data.get('translated_text', '')
+    student_lang = data.get('target_language', 'en')
     confidence = data.get('confidence', 1.0)
     status = data.get('status', 'ANSWERED')
 
-    if question_id and room_code and student_name and answer:
-        resp_data = db.submit_or_update_student_response(question_id, room_code, student_name, answer, confidence, status)
-        logger.info('Student answer received: room=%s student=%s', room_code, student_name)
-        emit('student_answer_broadcast', resp_data, to=room_code)
+    room = db.get_room(room_code) if room_code else None
+    teacher_lang = room.get('teacher_language', 'en') if room else 'en'
+
+    # Translate student answer into Teacher Language for Teacher Dashboard
+    if original_pred and not translated_text:
+        src_for_trans = 'en' if response_mode == 'sign' else student_lang
+        tr_res = translate(original_pred, src_for_trans, teacher_lang)
+        translated_text = tr_res.get('translated_text', original_pred)
+        measured_latency = round((time.perf_counter() - start_t) * 1000.0 + tr_res.get('latency_ms', 0.0), 1)
+    else:
+        measured_latency = round((time.perf_counter() - start_t) * 1000.0, 1)
+
+    if question_id and room_code and student_name and original_pred:
+        resp_data = db.submit_or_update_student_response(
+            question_id=question_id,
+            room_code=room_code,
+            student_name=student_name,
+            answer=original_pred,
+            confidence=confidence,
+            status=status,
+            target_language=teacher_lang,
+            translated_text=translated_text,
+            original_prediction=original_pred
+        )
+        logger.info('Student answer received (%s): room=%s student=%s (lat=%.1fms)', response_mode, room_code, student_name, measured_latency)
+
+        broadcast_payload = {
+            'question_id': question_id,
+            'room_id': room_code,
+            'room_code': room_code,
+            'student_name': student_name,
+            'response_mode': response_mode,
+            'original_prediction': original_pred,
+            'predicted_answer': original_pred,
+            'translated_text': translated_text,
+            'teacher_language': teacher_lang,
+            'target_language': teacher_lang,
+            'confidence': float(confidence),
+            'latency_ms': measured_latency,
+            'status': status,
+            'is_update': resp_data.get('is_update', False),
+            'timestamp': resp_data.get('timestamp')
+        }
+        emit('student_answer_broadcast', broadcast_payload, to=room_code)
+
+@socketio.on('set_language_event')
+def handle_set_language_event(data):
+    room_code = data.get('room_code')
+    student_name = data.get('student_name')
+    target_lang = data.get('target_language', 'en')
+    if room_code and student_name:
+        db.update_member_language(room_code, student_name, target_lang)
+        logger.info('Language updated for %s in room %s: %s', student_name, room_code, target_lang)
 
 @socketio.on('student_status_event')
 def handle_student_status_event(data):
@@ -286,6 +469,7 @@ def resolve_request_endpoint():
         db.resolve_student_request(req_id)
         return jsonify({'status': 'success'})
     return jsonify({'error': 'Invalid request_id'}), 400
+
 
 # =========================================================================
 # REAL-TIME SIGN RECOGNITION API

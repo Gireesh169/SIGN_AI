@@ -3,30 +3,95 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teacher Dashboard | {{ room.room_name }} ({{ room.room_code }})</title>
+    <title>Teacher Dashboard | Multilingual Inclusive Classroom ({{ room.room_code }})</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <style>
+        .tabs-nav {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            border-bottom: 2px solid rgba(255,255,255,0.1);
+            padding-bottom: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .tab-btn {
+            background: rgba(15,23,42,0.6);
+            border: 1px solid #334155;
+            color: #94a3b8;
+            padding: 0.6rem 1.2rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        .tab-btn.active {
+            background: #2563eb;
+            color: #fff;
+            border-color: #3b82f6;
+            box-shadow: 0 0 12px rgba(37,99,235,0.4);
+        }
+        .tab-pane { display: none; }
+        .tab-pane.active { display: block; }
+        
+        .latency-ticker {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            background: rgba(16,185,129,0.15);
+            border: 1px solid #10b981;
+            color: #34d399;
+            padding: 0.25rem 0.6rem;
+            border-radius: 999px;
+            font-size: 0.8rem;
+            font-weight: 700;
+        }
+
+        .lang-badge {
+            background: rgba(59,130,246,0.2);
+            border: 1px solid #3b82f6;
+            color: #93c5fd;
+            padding: 0.15rem 0.5rem;
+            border-radius: 0.3rem;
+            font-size: 0.75rem;
+            font-weight: 700;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
         <div class="nav-brand">
-            <span>👨‍🏫</span>
-            <span>Teacher Dashboard: {{ room.room_name }}</span>
+            <span>🌐</span>
+            <span>Multilingual Inclusive Classroom: {{ room.room_name }}</span>
         </div>
         <div class="nav-links">
-            <span class="badge badge-success" id="class-status-badge">CLASS IN SESSION</span>
+            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <label for="teacherLangSelect" style="color: #94a3b8; font-size: 0.85rem; font-weight: 600;">🌐 Teacher Teaching Language:</label>
+                <select id="teacherLangSelect" style="background: #1e293b; border: 1px solid #334155; color: #fff; padding: 0.35rem 0.6rem; border-radius: 0.4rem; font-size: 0.85rem;" onchange="onTeacherLangChange()">
+                    <option value="en" {% if room.teacher_language == 'en' %}selected{% endif %}>English</option>
+                    <option value="hi" {% if room.teacher_language == 'hi' %}selected{% endif %}>Hindi (हिन्दी)</option>
+                    <option value="te" {% if room.teacher_language == 'te' %}selected{% endif %}>Telugu (తెలుగు)</option>
+                </select>
+            </div>
+
+            <!-- Offline Readiness Indicator -->
+            <div id="sync-status-badge" class="badge badge-success" onclick="triggerSync()" style="cursor: pointer;" title="Click to synchronize offline content">
+                🟢 ONLINE (Synced)
+            </div>
+
             <a href="/report/{{ room.room_code }}" class="btn btn-secondary">📊 Class Report</a>
-            <a href="/" class="btn btn-danger" onclick="return confirm('End class and return home?')">End Session</a>
+            <a href="/" class="btn btn-danger" onclick="return confirm('End session?')">End Session</a>
         </div>
     </nav>
 
     <div class="container" style="max-width: 1600px;">
         <div class="dashboard-grid">
             
-            <!-- LEFT SIDEBAR: Room Info & Student Response Status -->
+            <!-- LEFT SIDEBAR: Room Info, Classroom Language Config, Student Monitor -->
             <aside class="glass-card">
-                <div style="margin-bottom: 1.5rem;">
+                <div style="margin-bottom: 1.2rem;">
                     <label style="font-size: 0.8rem; color: var(--secondary-color); font-weight: 700;">UNIQUE ROOM CODE</label>
                     <div style="display: flex; align-items: center; justify-content: space-between; background: rgba(0,0,0,0.4); padding: 0.8rem 1rem; border-radius: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--border-color);">
                         <span style="font-size: 1.5rem; font-weight: 800; color: #fff; letter-spacing: 2px;" id="room-code-display">{{ room.room_code }}</span>
@@ -34,169 +99,145 @@
                     </div>
                 </div>
 
-                <div style="margin-bottom: 1.5rem;">
-                    <h4 style="font-size: 1rem; color: var(--text-muted); margin-bottom: 0.5rem;">CLASSROOM DETAILS</h4>
-                    <p style="font-weight: 600; color: #fff;">{{ room.room_name }}</p>
-                    <p style="font-size: 0.9rem; color: var(--text-muted);">Subject: {{ room.subject }}</p>
-                    <p style="font-size: 0.9rem; color: var(--text-muted);">Teacher: {{ room.teacher_name }}</p>
+                <!-- CLASSROOM LANGUAGE CONFIGURATION -->
+                <div style="background: rgba(15,23,42,0.9); border: 1px solid #334155; border-radius: 0.5rem; padding: 0.8rem; margin-bottom: 1.2rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <span style="font-size: 0.85rem; font-weight: 700; color: #e2e8f0;">🌐 CLASSROOM LANGUAGES</span>
+                        <span class="lang-badge" id="teacher-lang-badge">{{ (room.teacher_language or 'en')|upper }}</span>
+                    </div>
+                    <div style="font-size: 0.75rem; color: #94a3b8;">Teacher speaks: <strong id="teacher-lang-name" style="color:#fff;">{{ room.teacher_language|upper }}</strong></div>
+                    <div style="font-size: 0.75rem; color: #38bdf8; margin-top: 0.2rem;" id="active-languages-count">Multilingual Student Routing Active</div>
+                </div>
+
+                <div style="margin-bottom: 1.2rem;">
+                    <h4 style="font-size: 0.95rem; color: var(--text-muted); margin-bottom: 0.4rem;">CLASSROOM DETAILS</h4>
+                    <p style="font-weight: 600; color: #fff; margin:0;">{{ room.room_name }}</p>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin:0;">Subject: {{ room.subject }}</p>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin:0;">Teacher: {{ room.teacher_name }}</p>
                 </div>
 
                 <div>
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
-                        <h4 style="font-size: 1rem; color: var(--text-muted);">STUDENT STATUS MONITOR</h4>
+                        <h4 style="font-size: 0.95rem; color: var(--text-muted);">STUDENT STATUS & LANGUAGES</h4>
                         <span class="badge badge-success" id="student-count-badge">{{ members|length }} Active</span>
                     </div>
 
-                    <div class="timeline-list" id="student-list-container" style="max-height: 350px;">
+                    <div class="timeline-list" id="student-list-container" style="max-height: 320px;">
                         {% for m in members %}
                         <div class="timeline-item" id="student-row-{{ m.student_name }}" style="padding: 0.6rem 0.8rem; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <span style="font-weight: 600; color: #fff;">🎓 {{ m.student_name }}</span>
-                                <div style="font-size: 0.75rem; color: var(--text-muted);" id="status-sub-{{ m.student_name }}">Joined: {{ m.joined_at }}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted);" id="status-sub-{{ m.student_name }}">Lang: <strong style="color:#38bdf8">{{ (m.preferred_language or 'en')|upper }}</strong></div>
                             </div>
-                            <span class="badge badge-warning" id="status-tag-{{ m.student_name }}">WAITING</span>
+                            <span class="badge badge-warning" id="status-tag-{{ m.student_name }}">ONLINE</span>
                         </div>
                         {% else %}
-                        <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;">Waiting for students to join...</p>
+                        <p style="font-size: 0.85rem; color: var(--text-muted); text-align: center;">Waiting for students to join...</p>
                         {% endfor %}
                     </div>
                 </div>
             </aside>
 
-            <!-- CENTER: Teacher Speech & Classroom Question History -->
+            <!-- CENTER MAIN WORKSPACE -->
             <main class="glass-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem;">
-                    <h3 style="font-size: 1.4rem;">🎙️ Teacher Speech Broadcast & Question System</h3>
-                    <div style="display: flex; gap: 0.8rem;">
-                        <button id="btn-toggle-speech" class="btn btn-primary" onclick="toggleTeacherSpeech()">🎙️ Start Speech Recognition</button>
+                
+                <!-- NAVIGATION TABS -->
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('tab-live')">🎙️ Live Multilingual Classroom</button>
+                    <button class="tab-btn" onclick="switchTab('tab-history')">📋 Question & Answer Logs</button>
+                </div>
+
+                <!-- TAB 1: LIVE VOICE TRANSLATION & RESPONSES -->
+                <div id="tab-live" class="tab-pane active">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <div>
+                            <h3 style="font-size: 1.3rem; margin:0;">🎙️ Teacher Speech Broadcast</h3>
+                            <p style="font-size: 0.85rem; color: #94a3b8; margin: 0.2rem 0 0 0;">Teacher speaks in selected language $\rightarrow$ Automatically routed and translated to each student's preferred language.</p>
+                        </div>
+                        <div style="display: flex; gap: 0.8rem; align-items: center;">
+                            <span class="latency-ticker" id="measured-latency-display">⚡ Latency: -- ms</span>
+                            <button id="btn-toggle-speech" class="btn btn-primary" onclick="toggleTeacherSpeech()">🎙️ START TEACHER SPEECH</button>
+                        </div>
+                    </div>
+
+                    <div class="accessible-teacher-box" style="margin-bottom: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between;">
+                            <label style="color: #38bdf8;">TEACHER SPOKEN SPEECH (<span id="active-teacher-lang-label">{{ (room.teacher_language or 'en')|upper }}</span>):</label>
+                            <span style="font-size: 0.8rem; color: #94a3b8;" id="active-question-id-tag">QUESTION ID: None</span>
+                        </div>
+                        <div class="accessible-text" id="teacher-live-transcript">"Speech recognition inactive. Click 'START TEACHER SPEECH' and speak."</div>
+                    </div>
+
+                    <!-- LIVE STUDENT RESPONSES PANEL -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem;">
+                        <h4 style="font-size: 1.1rem; color: var(--text-muted); margin:0;">📥 INCOMING STUDENT RESPONSES (SIGN ACCESSIBILITY & MULTILINGUAL)</h4>
+                    </div>
+                    <div class="timeline-list" id="live-responses-container" style="max-height: 380px;">
+                        <div id="no-responses-placeholder" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                            No student responses submitted for current question yet.
+                        </div>
                     </div>
                 </div>
 
-                <div class="accessible-teacher-box">
-                    <label>ACTIVE TEACHER QUESTION / INSTRUCTION BROADCASTED TO STUDENTS</label>
-                    <div class="accessible-text" id="teacher-live-transcript">"Speech recognition inactive. Click 'Start Speech Recognition' to ask a question."</div>
-                    <div style="font-size: 0.85rem; color: var(--secondary-color); margin-top: 0.5rem; font-weight: 700;" id="active-question-id-tag">ACTIVE QUESTION ID: None</div>
-                </div>
-
-                <!-- QUESTION HISTORY LIST -->
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h4 style="font-size: 1.1rem; color: var(--text-muted);">📋 CLASSROOM QUESTION HISTORY</h4>
-                    <span class="badge badge-secondary" id="total-questions-badge">{{ questions|length }} Questions Asked</span>
-                </div>
-
-                <div class="timeline-list" id="questions-history-container" style="max-height: 340px;">
-                    {% for q in questions %}
-                    <div class="timeline-item" style="cursor: pointer;" onclick="loadQuestionResponses('{{ q.question_id }}', '{{ q.question_text }}')">
-                        <div class="timeline-header">
-                            <span>❓ QUESTION #{{ loop.revindex }}</span>
-                            <span class="badge badge-success">{{ q.answered_count }} / {{ members|length }} Answered</span>
+                <!-- TAB 2: CLASSROOM LOGS -->
+                <div id="tab-history" class="tab-pane">
+                    <h3 style="font-size: 1.3rem; margin-bottom: 0.5rem;">📋 Classroom Question & Answer History</h3>
+                    <div class="timeline-list" id="questions-history-container" style="max-height: 480px;">
+                        {% for q in questions %}
+                        <div class="timeline-item" onclick="loadQuestionResponses('{{ q.question_id }}', '{{ q.question_text }}')" style="cursor: pointer;">
+                            <div class="timeline-header">
+                                <span>❓ {{ q.question_id }}</span>
+                                <span class="badge badge-secondary">{{ q.created_at }}</span>
+                            </div>
+                            <div class="timeline-message">"{{ q.question_text }}"</div>
                         </div>
-                        <div class="timeline-message">"{{ q.question_text }}"</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between;">
-                            <span>Asked at: {{ q.created_at }}</span>
-                            <span style="color: var(--secondary-color); font-weight: 600;">Click to view responses ➔</span>
-                        </div>
+                        {% else %}
+                        <p style="color: var(--text-muted); text-align: center;">No questions broadcasted yet.</p>
+                        {% endfor %}
                     </div>
-                    {% else %}
-                    <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;" id="no-questions-placeholder">No questions asked in this classroom session yet.</p>
-                    {% endfor %}
                 </div>
+
             </main>
-
-            <!-- RIGHT PANEL: Live Student Responses Queue & Question Details -->
-            <aside class="glass-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.2rem;">
-                    <h3 style="font-size: 1.2rem;">🟢 LIVE STUDENT RESPONSES</h3>
-                    <span class="badge badge-success" id="responses-count-badge">0 Answers</span>
-                </div>
-
-                <div class="timeline-list" id="live-responses-container" style="max-height: 520px;">
-                    <p style="font-size: 0.9rem; color: var(--text-muted); text-align: center;" id="no-responses-placeholder">Waiting for student sign responses...</p>
-                </div>
-            </aside>
-
         </div>
     </div>
 
-    <!-- QUESTION DETAIL MODAL CONTAINER -->
-    <div id="question-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); backdrop-filter: blur(8px); z-index: 1000; align-items: center; justify-content: center;">
-        <div class="glass-card" style="width: 90%; max-width: 700px; max-height: 80vh; overflow-y: auto;">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.3rem; color: var(--secondary-color);" id="modal-q-title">Question Breakdown</h3>
-                <button class="btn btn-secondary" onclick="closeQuestionModal()">✕ Close</button>
-            </div>
-            <div class="accessible-teacher-box" style="padding: 1rem; margin-bottom: 1rem;">
-                <div style="font-size: 1.4rem; font-weight: 700; color: #fff;" id="modal-q-text">"Question text"</div>
-            </div>
-            <div id="modal-responses-container" class="timeline-list">
-                <!-- Response items loaded dynamically -->
-            </div>
-        </div>
-    </div>
-
+    <!-- SCRIPT LOGIC -->
     <script>
         const ROOM_CODE = "{{ room.room_code }}";
         const TEACHER_NAME = "{{ room.teacher_name }}";
-        let activeQuestionId = null;
+        let teacherLanguage = "{{ room.teacher_language or 'en' }}";
         const socket = io();
 
-        socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: TEACHER_NAME, role: 'teacher' });
+        let activeQuestionId = null;
+        let lastSpokenText = '';
 
-        socket.on('student_joined_event', function(data) {
-            location.reload();
-        });
-
-        socket.on('teacher_question_broadcast', function(data) {
-            activeQuestionId = data.question_id;
-            document.getElementById('teacher-live-transcript').innerText = `"${data.question_text}"`;
-            document.getElementById('active-question-id-tag').innerText = `ACTIVE QUESTION ID: ${data.question_id}`;
-            addQuestionToHistory(data);
-        });
-
-        socket.on('student_answer_broadcast', function(data) {
-            addLiveResponse(data);
-            updateStudentStatus(data.student_name, 'ANSWERED', data.predicted_answer);
-        });
-
-        socket.on('student_status_broadcast', function(data) {
-            updateStudentStatus(data.student_name, data.status);
-        });
-
-        function updateStudentStatus(studentName, status, extraText = '') {
-            const tag = document.getElementById(`status-tag-${studentName}`);
-            const sub = document.getElementById(`status-sub-${studentName}`);
-            if (tag) {
-                tag.innerText = status;
-                if (status === 'ANSWERED') tag.className = 'badge badge-success';
-                else if (status === 'CAPTURING_SIGN') tag.className = 'badge badge-warning';
-                else if (status === 'LOW_CONFIDENCE') tag.className = 'badge badge-danger';
-            }
-            if (sub && extraText) {
-                sub.innerText = `Answer: "${extraText}"`;
-            }
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tabId).classList.add('active');
         }
 
-        function addQuestionToHistory(data) {
-            const holder = document.getElementById('no-questions-placeholder');
-            if (holder) holder.remove();
+        socket.on('connect', () => {
+            socket.emit('join_room_event', { room_code: ROOM_CODE, user_name: TEACHER_NAME, role: 'teacher' });
+        });
 
-            const container = document.getElementById('questions-history-container');
-            const item = document.createElement('div');
-            item.className = 'timeline-item';
-            item.style.cursor = 'pointer';
-            item.onclick = function() { loadQuestionResponses(data.question_id, data.question_text); };
-            item.innerHTML = `
-                <div class="timeline-header">
-                    <span>❓ NEW QUESTION</span>
-                    <span class="badge badge-success">0 Answered</span>
-                </div>
-                <div class="timeline-message">"${data.question_text}"</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.4rem; display: flex; justify-content: space-between;">
-                    <span>Asked at: ${data.timestamp}</span>
-                    <span style="color: var(--secondary-color); font-weight: 600;">Click to view responses ➔</span>
-                </div>
-            `;
-            container.prepend(item);
+        socket.on('student_answer_broadcast', (data) => {
+            addLiveResponse(data);
+        });
+
+        function onTeacherLangChange() {
+            const select = document.getElementById('teacherLangSelect');
+            teacherLanguage = select.value;
+            document.getElementById('teacher-lang-badge').textContent = teacherLanguage.toUpperCase();
+            document.getElementById('teacher-lang-name').textContent = select.options[select.selectedIndex].text;
+            document.getElementById('active-teacher-lang-label').textContent = teacherLanguage.toUpperCase();
+
+            if (recognition) {
+                const langMap = { 'en': 'en-US', 'hi': 'hi-IN', 'te': 'te-IN' };
+                recognition.lang = langMap[teacherLanguage] || 'en-US';
+            }
         }
 
         function addLiveResponse(data) {
@@ -206,62 +247,46 @@
             const container = document.getElementById('live-responses-container');
             const item = document.createElement('div');
             item.className = 'timeline-item';
+
+            let modeBadge = '🎤 SPEECH';
+            if (data.response_mode === 'sign') modeBadge = '🤟 SIGN ACCESSIBILITY';
+            if (data.response_mode === 'text') modeBadge = '⌨ TEXT';
+
+            const orig = data.original_prediction || data.predicted_answer || '';
+            const trans = data.translated_text || orig;
+
             item.innerHTML = `
                 <div class="timeline-header">
-                    <span>🟢 🎓 ${data.student_name}</span>
+                    <span>🟢 🎓 ${data.student_name} <small style="color:#94a3b8">(${modeBadge})</small></span>
                     <span class="badge badge-success">${Math.round(data.confidence * 100)}% Conf</span>
                 </div>
-                <div class="timeline-message" style="margin-bottom: 0.4rem;">"${data.predicted_answer}"</div>
-                <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; justify-content: space-between;">
-                    <span>${data.is_update ? 'Updated Answer' : 'Answered'}</span>
-                    <button class="btn btn-secondary" onclick="speakText('${data.predicted_answer}')" style="padding: 0.2rem 0.5rem; font-size: 0.75rem;">🔊 Listen</button>
+                <div style="font-size: 0.8rem; color: #38bdf8;">Original Input: "${orig}"</div>
+                <div style="font-size: 1.05rem; color: #a7f3d0; font-weight: 700; margin-top: 0.2rem;">Teacher Language (${teacherLanguage.toUpperCase()}): "${trans}"</div>
+                <div style="font-size: 0.75rem; color: #94a3b8; margin-top: 0.4rem; display:flex; justify-content:space-between; align-items:center;">
+                    <span>Latency: ${data.latency_ms || '--'} ms</span>
+                    <button class="btn btn-secondary" onclick="speakText('${trans || orig}')" style="padding: 0.2rem 0.6rem; font-size: 0.8rem;">🔊 Play</button>
                 </div>
             `;
             container.prepend(item);
+
+            // Auto-TTS for confirmed stable responses
+            if (data.confidence >= 0.75) {
+                speakText(trans || orig);
+            }
         }
 
         function speakText(text) {
-            if ('speechSynthesis' in window) {
+            if ('speechSynthesis' in window && text) {
                 const synth = window.speechSynthesis;
+                synth.cancel();
                 const utt = new SpeechSynthesisUtterance(text);
+                const langMap = { 'en': 'en-US', 'hi': 'hi-IN', 'te': 'te-IN' };
+                utt.lang = langMap[teacherLanguage] || 'en-US';
                 synth.speak(utt);
             }
         }
 
-        function loadQuestionResponses(qId, qText) {
-            document.getElementById('modal-q-text').innerText = `"${qText}"`;
-            document.getElementById('question-modal').style.display = 'flex';
-
-            fetch(`/api/question_responses/${qId}`)
-            .then(res => res.json())
-            .then(data => {
-                const container = document.getElementById('modal-responses-container');
-                if (data.responses && data.responses.length > 0) {
-                    let html = '';
-                    data.responses.forEach(r => {
-                        html += `
-                            <div class="timeline-item">
-                                <div class="timeline-header">
-                                    <span>🎓 ${r.student_name}</span>
-                                    <span class="badge badge-success">${Math.round(r.confidence * 100)}%</span>
-                                </div>
-                                <div class="timeline-message">"${r.predicted_answer}"</div>
-                                <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.2rem;">Updated at: ${r.updated_at}</div>
-                            </div>
-                        `;
-                    });
-                    container.innerHTML = html;
-                } else {
-                    container.innerHTML = '<p style="color: var(--text-muted); text-align: center;">No student responses recorded for this question yet.</p>';
-                }
-            });
-        }
-
-        function closeQuestionModal() {
-            document.getElementById('question-modal').style.display = 'none';
-        }
-
-        // Web Speech API
+        // Web Speech API for Teacher
         let recognition = null;
         let isListening = false;
 
@@ -270,32 +295,35 @@
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
-            recognition.lang = 'en-US';
+            
+            const langMap = { 'en': 'en-US', 'hi': 'hi-IN', 'te': 'te-IN' };
+            recognition.lang = langMap[teacherLanguage] || 'en-US';
 
             recognition.onresult = function(event) {
-                let interim = '';
                 let finalStr = '';
 
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
                     if (event.results[i].isFinal) {
                         finalStr += event.results[i][0].transcript;
-                    } else {
-                        interim += event.results[i][0].transcript;
                     }
                 }
 
                 if (finalStr.trim().length > 0) {
+                    lastSpokenText = finalStr;
                     document.getElementById('teacher-live-transcript').innerText = `"${finalStr}"`;
-                    socket.emit('teacher_speech_event', { room_code: ROOM_CODE, message: finalStr, teacher_name: TEACHER_NAME });
-                } else if (interim.trim().length > 0) {
-                    document.getElementById('teacher-live-transcript').innerText = `"${interim}..."`;
+                    socket.emit('teacher_speech_event', {
+                        room_code: ROOM_CODE,
+                        message: finalStr,
+                        teacher_name: TEACHER_NAME,
+                        source_language: teacherLanguage
+                    });
                 }
             };
         }
 
         function toggleTeacherSpeech() {
             if (!recognition) {
-                alert("Speech recognition is not supported in this browser. Please use Chrome.");
+                alert("Speech recognition not supported in this browser. Please use Google Chrome.");
                 return;
             }
             const btn = document.getElementById('btn-toggle-speech');
@@ -303,12 +331,12 @@
                 recognition.start();
                 isListening = true;
                 btn.className = "btn btn-danger";
-                btn.innerText = "🛑 Stop Speech Recognition";
+                btn.innerText = "🛑 STOP SPEECH";
             } else {
                 recognition.stop();
                 isListening = false;
                 btn.className = "btn btn-primary";
-                btn.innerText = "🎙️ Start Speech Recognition";
+                btn.innerText = "🎙️ START TEACHER SPEECH";
             }
         }
     </script>
