@@ -54,11 +54,11 @@
                 </thead>
                 <tbody>
                     {% for log in logs %}
-                    <tr style="border-bottom: 1px solid rgba(255,255,255,0.05);">
+                    <tr style="border-bottom: 1px solid var(--border-color);">
                         <td style="padding: 1rem; color: var(--text-muted);">{{ log.timestamp }}</td>
-                        <td style="padding: 1rem; font-weight: 700; color: var(--secondary-color);">{{ log.room_code }}</td>
-                        <td style="padding: 1rem; font-weight: 600; color: #fff;">🎓 {{ log.student_name }}</td>
-                        <td style="padding: 1rem; font-weight: 600; color: #fff;">"{{ log.detected_sentence }}"</td>
+                        <td style="padding: 1rem; font-weight: 700; color: var(--primary-color);">{{ log.room_code }}</td>
+                        <td style="padding: 1rem; font-weight: 600; color: var(--text-main);">🎓 {{ log.student_name }}</td>
+                        <td style="padding: 1rem; font-weight: 600; color: var(--text-main);">"{{ log.detected_sentence }}"</td>
                         <td style="padding: 1rem;">{{ (log.confidence * 100)|round(1) }}%</td>
                         <td style="padding: 1rem;"><span class="badge badge-success">{{ log.status }}</span></td>
                     </tr>

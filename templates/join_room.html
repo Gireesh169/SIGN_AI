@@ -20,11 +20,11 @@
 
     <div class="container" style="max-width: 550px; margin-top: 2.5rem;">
         <div class="glass-card">
-            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center; color: #fff;">🎓 Join Virtual Classroom</h2>
+            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center; color: var(--text-main);">🎓 Join Virtual Classroom</h2>
             <p style="color: var(--text-muted); text-align: center; margin-bottom: 1.5rem;">Enter your student details and choose your preferred language for real-time translation.</p>
 
             {% if error %}
-            <div style="background: rgba(239, 68, 68, 0.2); border: 1px solid var(--accent-red); padding: 0.8rem; border-radius: 0.5rem; color: #fca5a5; margin-bottom: 1.5rem; text-align: center;">
+            <div style="background: var(--accent-red-bg); border: 1px solid var(--accent-red-border); padding: 0.8rem; border-radius: 0.5rem; color: var(--accent-red); margin-bottom: 1.5rem; text-align: center; font-weight: 600;">
                 {{ error }}
             </div>
             {% endif %}
@@ -41,10 +41,10 @@
                 </div>
 
                 <!-- STUDENT PREFERRED LANGUAGE SELECTION -->
-                <div class="form-group" style="background: rgba(16,185,129,0.1); border: 1px solid #10b981; padding: 1rem; border-radius: 0.5rem;">
-                    <label style="color: #6ee7b7; font-weight: 700; font-size: 0.95rem;">🌐 What language would you like to receive classroom instructions in? *</label>
-                    <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem;">Teacher speech will be automatically translated into this language for you.</p>
-                    <select name="student_preferred_language" class="form-control" style="background: #1e293b; color: #fff; font-size: 1rem; font-weight: 600;">
+                <div class="form-group" style="background: var(--accent-green-bg); border: 1px solid var(--accent-green-border); padding: 1.25rem; border-radius: 0.75rem;">
+                    <label style="color: var(--accent-green); font-weight: 700; font-size: 0.95rem;">🌐 What language would you like to receive classroom instructions in? *</label>
+                    <p style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 0.6rem;">Teacher speech will be automatically translated into this language for you.</p>
+                    <select name="student_preferred_language" class="form-control" style="background: #ffffff; color: var(--text-main); font-size: 1rem; font-weight: 600;">
                         <option value="en" selected>English</option>
                         <option value="hi">Hindi (हिन्दी)</option>
                         <option value="te">Telugu (తెలుగు)</option>

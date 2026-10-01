@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Classroom Analytics | {{ room.room_code }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .analytics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.2rem; margin-top: 1.5rem; }
+        .metric-card { background: #ffffff; border: 1px solid var(--border-color); padding: 1.25rem; border-radius: 0.75rem; box-shadow: var(--shadow-sm); }
+        .metric-val { font-size: 2.2rem; font-weight: 800; color: var(--primary-color); margin: 0.2rem 0; }
+        .chart-card { background: #ffffff; border: 1px solid var(--border-color); border-radius: 0.75rem; padding: 1.5rem; margin-top: 1.5rem; box-shadow: var(--shadow-sm); }
+        .bar-container { display: flex; flex-direction: column; gap: 0.8rem; margin-top: 1rem; }
+        .bar-row { display: flex; align-items: center; gap: 1rem; font-size: 0.9rem; }
+        .bar-label { width: 140px; color: var(--text-main); font-weight: 600; }
+        .bar-track { flex-grow: 1; background: #f1f5f9; height: 22px; border-radius: 6px; overflow: hidden; position: relative; border: 1px solid #e2e8f0; }
+        .bar-fill { height: 100%; transition: width 0.6s ease; display: flex; align-items: center; justify-content: flex-end; padding-right: 0.5rem; color: #fff; font-weight: 700; font-size: 0.75rem; }
+        .bar-fill-sign { background: #2563eb; }
+        .bar-fill-speech { background: #166534; }
+        .bar-fill-text { background: #d97706; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>📊</span>
+            <span>Classroom Analytics & Insights — Room: {{ room.room_code }}</span>
+        </div>
+        <div class="nav-links">
+            <a href="/teacher/{{ room.room_code }}" class="btn btn-secondary">⬅️ Back to Teacher Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 1400px; margin-top: 2rem;">
+        <h2>📊 {{ room.room_name }} ({{ room.subject }})</h2>
+        <p style="color: #94a3b8;">Real-time performance analytics computed directly from classroom activity logs and response records.</p>
+
+        <!-- KEY METRICS CARDS -->
+        <div class="analytics-grid">
+            <div class="metric-card">
+                <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700;">TOTAL STUDENTS JOINED</div>
+                <div class="metric-val" style="color: #38bdf8;">{{ analytics.total_students }}</div>
+                <div style="font-size: 0.75rem; color: #34d399;">🟢 {{ analytics.online_students }} Online | ⚪ {{ analytics.offline_students }} Offline</div>
+            </div>
+            <div class="metric-card">
+                <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700;">QUESTIONS ASKED</div>
+                <div class="metric-val" style="color: #a855f7;">{{ analytics.total_questions }}</div>
+                <div style="font-size: 0.75rem; color: #f43f5e;">⚠️ {{ analytics.unanswered_questions }} Unanswered</div>
+            </div>
+            <div class="metric-card">
+                <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700;">RESPONSES RECEIVED</div>
+                <div class="metric-val" style="color: #10b981;">{{ analytics.total_responses }}</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Across all communication channels</div>
+            </div>
+            <div class="metric-card">
+                <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700;">AVG SIGN CONFIDENCE</div>
+                <div class="metric-val" style="color: #f59e0b;">{{ analytics.avg_sign_confidence }}%</div>
+                <div style="font-size: 0.75rem; color: #38bdf8;">252D Landmark Model</div>
+            </div>
+            <div class="metric-card">
+                <div style="color: #94a3b8; font-size: 0.8rem; font-weight: 700;">AVG RESPONSE SPEED</div>
+                <div class="metric-val" style="color: #ec4899;">{{ analytics.avg_response_time_sec }}s</div>
+                <div style="font-size: 0.75rem; color: #10b981;">Real-time interaction</div>
+            </div>
+        </div>
+
+        <!-- CHARTS SECTION -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-top: 1.5rem;">
+            <!-- RESPONSE MODES DISTRIBUTION -->
+            <div class="chart-card">
+                <h3>💬 Response Modes Distribution</h3>
+                <p style="color: #94a3b8; font-size: 0.85rem;">Breakdown of student answer submission methods in this classroom.</p>
+                
+                <div class="bar-container">
+                    <div class="bar-row">
+                        <div class="bar-label">🤟 Sign Language</div>
+                        <div class="bar-track">
+                            <div class="bar-fill bar-fill-sign" style="width: {{ (analytics.mode_distribution.sign / (analytics.total_responses or 1) * 100)|round }}%;">
+                                {{ analytics.mode_distribution.sign }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bar-row">
+                        <div class="bar-label">🎙️ Speech Mode</div>
+                        <div class="bar-track">
+                            <div class="bar-fill bar-fill-speech" style="width: {{ (analytics.mode_distribution.speech / (analytics.total_responses or 1) * 100)|round }}%;">
+                                {{ analytics.mode_distribution.speech }}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bar-row">
+                        <div class="bar-label">⌨️ Text Mode</div>
+                        <div class="bar-track">
+                            <div class="bar-fill bar-fill-text" style="width: {{ (analytics.mode_distribution.text / (analytics.total_responses or 1) * 100)|round }}%;">
+                                {{ analytics.mode_distribution.text }}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LANGUAGE PREFERENCE BREAKDOWN -->
+            <div class="chart-card">
+                <h3>🌐 Student Language Distribution</h3>
+                <p style="color: #94a3b8; font-size: 0.85rem;">Preferred instruction languages selected by active students.</p>
+
+                <div class="bar-container">
+                    {% for lcode, lcount in analytics.language_distribution.items() %}
+                    <div class="bar-row">
+                        <div class="bar-label">
+                            {% if lcode == 'en' %}🇬🇧 English
+                            {% elif lcode == 'hi' %}🇮🇳 Hindi (हिन्दी)
+                            {% elif lcode == 'te' %}🇮🇳 Telugu (తెలుగు)
+                            {% else %}{{ lcode|upper }}
+                            {% endif %}
+                        </div>
+                        <div class="bar-track">
+                            <div class="bar-fill" style="width: {{ (lcount / (analytics.total_students or 1) * 100)|round }}%; background: #6366f1;">
+                                {{ lcount }} student(s)
+                            </div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <p style="color: #94a3b8; text-align: center;">No student language preferences logged yet.</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

@@ -21,7 +21,7 @@
 
     <div class="container" style="max-width: 650px; margin-top: 2rem;">
         <div class="glass-card">
-            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center; color: #fff;">👨‍🏫 Create Virtual Classroom</h2>
+            <h2 style="font-size: 1.8rem; margin-bottom: 0.5rem; text-align: center; color: var(--text-main);">👨‍🏫 Create Virtual Classroom</h2>
             <p style="color: var(--text-muted); text-align: center; margin-bottom: 2rem;">Configure classroom settings and select your primary teaching language.</p>
 
             <form action="/api/create_room" method="POST">
@@ -31,10 +31,10 @@
                 </div>
 
                 <!-- FIRST-TIME TEACHER LANGUAGE SELECTION -->
-                <div class="form-group" style="background: rgba(37,99,235,0.1); border: 1px solid #3b82f6; padding: 1rem; border-radius: 0.5rem;">
-                    <label style="color: #6ee7b7; font-weight: 700; font-size: 0.95rem;">🌐 What language will you use for teaching? *</label>
-                    <p style="font-size: 0.8rem; color: #94a3b8; margin-bottom: 0.5rem;">Your speech will be transcribed in this language and automatically translated for each student.</p>
-                    <select name="teacher_language" class="form-control" style="background: #1e293b; color: #fff; font-size: 1rem; font-weight: 600;">
+                <div class="form-group" style="background: var(--primary-light); border: 1px solid var(--primary-border); padding: 1.25rem; border-radius: 0.75rem;">
+                    <label style="color: var(--primary-color); font-weight: 700; font-size: 0.95rem;">🌐 What language will you use for teaching? *</label>
+                    <p style="font-size: 0.825rem; color: var(--text-muted); margin-bottom: 0.6rem;">Your speech will be transcribed in this language and automatically translated for each student.</p>
+                    <select name="teacher_language" class="form-control" style="background: #ffffff; color: var(--text-main); font-size: 1rem; font-weight: 600;">
                         <option value="en" selected>English</option>
                         <option value="hi">Hindi (हिन्दी)</option>
                         <option value="te">Telugu (తెలుగు)</option>
