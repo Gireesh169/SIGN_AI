@@ -188,7 +188,7 @@ def student_dashboard_page(room_code):
     student_name = request.args.get('student_name', 'Student')
     room = db.get_room(room_code)
     if not room:
-        return redirect(url_for('index_page'))
+        return redirect(url_for('join_room_page', error="Room not found. Please check the Room Code."))
     latest_question = db.get_latest_question(room_code)
     activity_logs = db.get_student_activity_logs(room_code, student_name)
     return render_template('student_dashboard.html', room=room, student_name=student_name, latest_question=latest_question, activity_logs=activity_logs)
@@ -327,26 +327,62 @@ def generate_flashcards_endpoint():
 # =========================================================================
 # REAL-TIME SOCKET.IO EVENT HANDLERS
 # =========================================================================
+active_socket_sessions = {}
+
 @socketio.on('connect')
 def handle_connect():
     logger.info('Socket.IO client connected: %s', request.sid)
 
 @socketio.on('disconnect')
 def handle_disconnect():
-    logger.info('Socket.IO client disconnected: %s', request.sid)
+    sid_info = active_socket_sessions.pop(request.sid, None)
+    if sid_info:
+        room_code = sid_info.get('room_code')
+        user_name = sid_info.get('student_name')
+        role = sid_info.get('role')
+        logger.info('Socket.IO client disconnected: %s (%s "%s" in room %s)', request.sid, role, user_name, room_code)
+        if role == 'student' and room_code and user_name:
+            db.update_member_status(room_code, user_name, 'offline')
+            emit('student_status_broadcast', {
+                'student_name': user_name,
+                'room_code': room_code,
+                'status': 'offline',
+                'preferred_language': sid_info.get('preferred_language', 'en')
+            }, to=room_code)
+    else:
+        logger.info('Socket.IO client disconnected: %s', request.sid)
 
 @socketio.on('join_room_event')
 def handle_join_room_event(data):
     room_code = data.get('room_code')
     user_name = data.get('user_name')
     role = data.get('role', 'student')
-    pref_lang = data.get('preferred_language', 'sat')
+    pref_lang = data.get('preferred_language', 'en')
     if room_code:
         socket_join_room(room_code)
+        if user_name:
+            active_socket_sessions[request.sid] = {
+                'room_code': room_code,
+                'student_name': user_name,
+                'role': role,
+                'preferred_language': pref_lang
+            }
         logger.info('Socket.IO: %s "%s" joined room %s (lang: %s)', role, user_name, room_code, pref_lang)
-        if role == 'student':
-            db.update_member_language(room_code, user_name, pref_lang)
-            emit('student_joined_event', {'student_name': user_name, 'room_code': room_code, 'preferred_language': pref_lang}, to=room_code)
+        if role == 'student' and user_name:
+            db.join_room(room_code, user_name, pref_lang)
+            db.update_member_status(room_code, user_name, 'online')
+            emit('student_joined_event', {
+                'student_name': user_name,
+                'room_code': room_code,
+                'preferred_language': pref_lang,
+                'status': 'online'
+            }, to=room_code)
+            emit('student_status_broadcast', {
+                'student_name': user_name,
+                'room_code': room_code,
+                'status': 'online',
+                'preferred_language': pref_lang
+            }, to=room_code)
 
 @socketio.on('teacher_speech_event')
 def handle_teacher_speech_event(data):
@@ -397,7 +433,7 @@ def handle_student_answer_event(data):
     response_mode = data.get('response_mode', 'speech')  # 'speech', 'sign', 'text'
     original_pred = data.get('original_prediction') or data.get('answer', '')
     translated_text = data.get('translated_text', '')
-    student_lang = data.get('target_language', 'en')
+    student_lang = data.get('target_language') or data.get('source_language') or 'en'
     confidence = data.get('confidence', 1.0)
     status = data.get('status', 'ANSWERED')
 
@@ -438,6 +474,7 @@ def handle_student_answer_event(data):
             'translated_text': translated_text,
             'teacher_language': teacher_lang,
             'target_language': teacher_lang,
+            'student_language': student_lang,
             'confidence': float(confidence),
             'latency_ms': measured_latency,
             'status': status,
@@ -455,11 +492,314 @@ def handle_set_language_event(data):
         db.update_member_language(room_code, student_name, target_lang)
         logger.info('Language updated for %s in room %s: %s', student_name, room_code, target_lang)
 
+@socketio.on('set_teacher_language_event')
+def handle_set_teacher_language_event(data):
+    room_code = data.get('room_code')
+    teacher_lang = data.get('teacher_language', 'en')
+    if room_code:
+        db.update_teacher_language(room_code, teacher_lang)
+        logger.info('Teacher language updated for room %s: %s', room_code, teacher_lang)
+        emit('teacher_language_updated_broadcast', {
+            'room_code': room_code,
+            'teacher_language': teacher_lang
+        }, to=room_code)
+
 @socketio.on('student_status_event')
 def handle_student_status_event(data):
     room_code = data.get('room_code')
     if room_code:
         emit('student_status_broadcast', data, to=room_code)
+
+# ---------------------------------------------------------------------------
+# RAISE HAND SOCKET & REST HANDLERS
+# ---------------------------------------------------------------------------
+@socketio.on('raise_hand_event')
+def handle_raise_hand_event(data):
+    room_code = data.get('room_code')
+    student_name = data.get('student_name', 'Student')
+    if room_code and student_name:
+        hand_data = db.raise_hand(room_code, student_name)
+        notif = db.create_notification(room_code, 'teacher', 'raise_hand', f'✋ {student_name} raised their hand', student_name)
+        logger.info('Raise hand event: room=%s student=%s', room_code, student_name)
+        emit('raise_hand_broadcast', hand_data, to=room_code)
+        emit('notification_broadcast', notif, to=room_code)
+
+@socketio.on('raise_hand_action_event')
+def handle_raise_hand_action_event(data):
+    hand_id = data.get('hand_id')
+    status = data.get('status', 'acknowledged') # 'acknowledged', 'dismissed', 'answered'
+    room_code = data.get('room_code')
+    if hand_id and room_code:
+        db.update_raise_hand_status(hand_id, status)
+        logger.info('Raise hand action: hand_id=%s status=%s', hand_id, status)
+        emit('raise_hand_action_broadcast', {'hand_id': hand_id, 'status': status, 'room_code': room_code}, to=room_code)
+
+@app.route('/api/raise_hands/<room_code>')
+def get_active_raise_hands_endpoint(room_code):
+    hands = db.get_active_raise_hands(room_code)
+    return jsonify({'raise_hands': hands})
+
+# ---------------------------------------------------------------------------
+# ANNOUNCEMENTS SOCKET & REST HANDLERS
+# ---------------------------------------------------------------------------
+@socketio.on('teacher_announcement_event')
+def handle_teacher_announcement_event(data):
+    room_code = data.get('room_code')
+    teacher_name = data.get('teacher_name', 'Teacher')
+    title = data.get('title', '').strip()
+    content = data.get('content', '').strip()
+    priority = data.get('priority', 'normal')
+    is_pinned = data.get('is_pinned', 0)
+
+    if room_code and title and content:
+        ann = db.create_announcement(room_code, teacher_name, title, content, priority, is_pinned)
+        notif = db.create_notification(room_code, 'student', 'announcement', f'📢 Announcement: {title}')
+        logger.info('Announcement created: room=%s title=%s priority=%s', room_code, title, priority)
+        emit('announcement_broadcast', ann, to=room_code)
+        emit('notification_broadcast', notif, to=room_code)
+
+@socketio.on('pin_announcement_event')
+def handle_pin_announcement_event(data):
+    ann_id = data.get('ann_id')
+    room_code = data.get('room_code')
+    if ann_id and room_code:
+        db.toggle_pin_announcement(ann_id)
+        emit('pin_announcement_broadcast', {'ann_id': ann_id, 'room_code': room_code}, to=room_code)
+
+@app.route('/api/announcements/<room_code>')
+def get_announcements_endpoint(room_code):
+    announcements = db.get_announcements(room_code)
+    return jsonify({'announcements': announcements})
+
+# ---------------------------------------------------------------------------
+# QUESTION CONTROL & RESPONSE REVIEW APIs
+# ---------------------------------------------------------------------------
+@socketio.on('question_control_event')
+def handle_question_control_event(data):
+    question_id = data.get('question_id')
+    room_code = data.get('room_code')
+    action = data.get('action') # 'close', 'reopen', 'repeat', 'timer'
+    timer_seconds = data.get('timer_seconds', 0)
+
+    if question_id and room_code and action:
+        if action == 'close':
+            db.update_question_status(question_id, 'closed')
+        elif action == 'reopen':
+            db.update_question_status(question_id, 'active')
+        
+        logger.info('Question control: qid=%s action=%s timer=%s', question_id, action, timer_seconds)
+        emit('question_control_broadcast', {
+            'question_id': question_id,
+            'room_code': room_code,
+            'action': action,
+            'timer_seconds': timer_seconds
+        }, to=room_code)
+
+@app.route('/api/response/review', methods=['POST'])
+def review_response_endpoint():
+    data = request.json or {}
+    resp_id = data.get('response_id')
+    reviewed = data.get('reviewed', 1)
+    if resp_id:
+        db.mark_response_reviewed(resp_id, reviewed)
+        return jsonify({'status': 'success'})
+    return jsonify({'error': 'Invalid response_id'}), 400
+
+# ---------------------------------------------------------------------------
+# QUIZ & ASSESSMENT REST & SOCKET APIS
+# ---------------------------------------------------------------------------
+@app.route('/api/quiz/create', methods=['POST'])
+def create_quiz_endpoint():
+    data = request.json or {}
+    room_code = data.get('room_code')
+    teacher_name = data.get('teacher_name', 'Teacher')
+    title = data.get('title', '').strip()
+    description = data.get('description', '').strip()
+    duration_minutes = int(data.get('duration_minutes', 10))
+    questions_input = data.get('questions', [])
+
+    if not room_code or not title:
+        return jsonify({'error': 'Missing room_code or quiz title', 'status': 'failed'}), 400
+
+    quiz = db.create_quiz(room_code, teacher_name, title, description, duration_minutes)
+    for q in questions_input:
+        q_text = q.get('question_text', '').strip()
+        q_type = q.get('question_type', 'mcq')
+        opts = json.dumps(q.get('options', []))
+        ans = q.get('correct_answer', '').strip()
+        pts = int(q.get('points', 1))
+        if q_text:
+            db.add_quiz_question(quiz['quiz_id'], q_text, q_type, opts, ans, pts)
+
+    notif = db.create_notification(room_code, 'student', 'quiz', f'📝 New Quiz Available: {title}')
+    socketio.emit('quiz_created_broadcast', quiz, to=room_code)
+    socketio.emit('notification_broadcast', notif, to=room_code)
+    return jsonify({'status': 'success', 'quiz': quiz})
+
+@app.route('/api/quizzes/<room_code>')
+def get_quizzes_endpoint(room_code):
+    quizzes = db.get_quizzes_by_room(room_code)
+    return jsonify({'quizzes': quizzes})
+
+@app.route('/api/quiz/<quiz_id>')
+def get_quiz_detail_endpoint(quiz_id):
+    quiz = db.get_quiz_with_questions(quiz_id)
+    if not quiz:
+        return jsonify({'error': 'Quiz not found'}), 404
+    return jsonify(quiz)
+
+@app.route('/api/quiz/submit', methods=['POST'])
+def submit_quiz_endpoint():
+    data = request.json or {}
+    quiz_id = data.get('quiz_id')
+    question_id = data.get('question_id')
+    room_code = data.get('room_code')
+    student_name = data.get('student_name')
+    response_text = data.get('response', '').strip()
+    response_mode = data.get('response_mode', 'text')
+    confidence = float(data.get('confidence', 1.0))
+    correct_answer = data.get('correct_answer', '').strip()
+
+    if not quiz_id or not question_id or not student_name or not response_text:
+        return jsonify({'error': 'Missing required fields', 'status': 'failed'}), 400
+
+    is_correct = 1 if (correct_answer and response_text.lower() == correct_answer.lower()) else 0
+    score = 1 if is_correct else 0
+
+    resp_id = db.submit_quiz_response(quiz_id, question_id, room_code, student_name, response_text, response_mode, confidence, is_correct, score)
+    return jsonify({'status': 'success', 'response_id': resp_id, 'is_correct': is_correct, 'score': score})
+
+@app.route('/api/quiz/results/<quiz_id>')
+def get_quiz_results_endpoint(quiz_id):
+    results = db.get_quiz_results(quiz_id)
+    return jsonify({'results': results})
+
+# ---------------------------------------------------------------------------
+# CLASSROOM CONTENT MANAGEMENT REST APIS
+# ---------------------------------------------------------------------------
+ALLOWED_EXTENSIONS = {'pdf', 'ppt', 'pptx', 'doc', 'docx', 'txt', 'png', 'jpg', 'jpeg'}
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+@app.route('/api/content/upload', methods=['POST'])
+def upload_content_endpoint():
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file payload provided', 'status': 'failed'}), 400
+
+    file = request.files['file']
+    room_code = request.form.get('room_code', '').strip()
+    teacher_name = request.form.get('teacher_name', 'Teacher').strip()
+    subject = request.form.get('subject', 'General').strip()
+    module_name = request.form.get('module_name', 'Module 1').strip()
+    lesson_title = request.form.get('lesson_title', 'Lesson 1').strip()
+
+    if not file or file.filename == '':
+        return jsonify({'error': 'No file selected', 'status': 'failed'}), 400
+
+    if not room_code:
+        return jsonify({'error': 'Missing room_code', 'status': 'failed'}), 400
+
+    if not allowed_file(file.filename):
+        return jsonify({'error': f'File type not allowed. Supported: {", ".join(ALLOWED_EXTENSIONS)}', 'status': 'failed'}), 400
+
+    filename = secure_filename(file.filename)
+    timestamp_prefix = int(time.time())
+    unique_filename = f"{timestamp_prefix}_{filename}"
+    save_path = os.path.join(app.config['UPLOAD_FOLDER'], unique_filename)
+
+    file.save(save_path)
+    file_size = os.path.getsize(save_path)
+    file_ext = filename.rsplit('.', 1)[1].lower()
+    web_file_path = f"/static/uploads/{unique_filename}"
+
+    content_item = db.add_classroom_content(
+        room_code=room_code,
+        teacher_name=teacher_name,
+        subject=subject,
+        module_name=module_name,
+        lesson_title=lesson_title,
+        file_name=filename,
+        file_path=web_file_path,
+        file_type=file_ext,
+        file_size=file_size
+    )
+
+    notif = db.create_notification(room_code, 'student', 'content', f'📁 New Content Uploaded: {lesson_title} ({filename})')
+    socketio.emit('content_uploaded_broadcast', content_item, to=room_code)
+    socketio.emit('notification_broadcast', notif, to=room_code)
+
+    return jsonify({'status': 'success', 'content': content_item})
+
+@app.route('/api/content/<room_code>')
+def get_classroom_content_endpoint(room_code):
+    content_list = db.get_classroom_content(room_code)
+    return jsonify({'content': content_list})
+
+# ---------------------------------------------------------------------------
+# CLASSROOM ANALYTICS & STUDENT PERFORMANCE REST APIS
+# ---------------------------------------------------------------------------
+@app.route('/api/analytics/<room_code>')
+def get_classroom_analytics_endpoint(room_code):
+    analytics = db.get_room_analytics(room_code)
+    return jsonify(analytics)
+
+@app.route('/api/student_performance/<room_code>/<student_name>')
+def get_student_performance_endpoint(room_code, student_name):
+    perf = db.get_student_performance(room_code, student_name)
+    return jsonify(perf)
+
+@app.route('/analytics/<room_code>')
+def analytics_page(room_code):
+    room = db.get_room(room_code)
+    if not room:
+        return redirect(url_for('index_page'))
+    analytics = db.get_room_analytics(room_code)
+    return render_template('analytics.html', room=room, analytics=analytics)
+
+# ---------------------------------------------------------------------------
+# USER ROLES & ADMIN MANAGEMENT
+# ---------------------------------------------------------------------------
+@app.route('/admin')
+def admin_dashboard_page():
+    users = db.get_all_users()
+    return render_template('admin.html', users=users)
+
+@app.route('/api/admin/system_health')
+def admin_system_health():
+    try:
+        eng = get_engine()
+        model_ready = eng is not None
+    except Exception:
+        model_ready = False
+
+    return jsonify({
+        'status': 'healthy' if model_ready else 'degraded',
+        'model_loaded': 'best_model_252.pth' if model_ready else None,
+        'torch_device': str(DEVICE),
+        'db_path': db.db_path,
+        'uptime_status': 'online'
+    })
+
+@app.route('/api/admin/create_user', methods=['POST'])
+def admin_create_user():
+    data = request.json or {}
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    role = data.get('role', 'student').strip()
+    full_name = data.get('full_name', '').strip()
+    email = data.get('email', '').strip()
+
+    if not username or not password:
+        return jsonify({'error': 'Username and password required', 'status': 'failed'}), 400
+
+    # In production use bcrypt/scrypt; simple string hash for baseline extension
+    pass_hash = base64.b64encode(password.encode()).decode()
+    user = db.create_user(username, pass_hash, role, full_name, email)
+    if not user:
+        return jsonify({'error': 'Username already exists', 'status': 'failed'}), 400
+
+    return jsonify({'status': 'success', 'user': user})
 
 @app.route('/api/resolve_request', methods=['POST'])
 def resolve_request_endpoint():

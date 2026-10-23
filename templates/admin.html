@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIGNBRIDGE | Admin Dashboard</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/classroom.css') }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .admin-grid { display: grid; grid-template-columns: 300px 1fr; gap: 1.5rem; margin-top: 1.5rem; }
+        .stat-card { background: #ffffff; border: 1px solid var(--border-color); padding: 1.25rem; border-radius: 0.75rem; text-align: center; box-shadow: var(--shadow-sm); }
+        .stat-val { font-size: 2rem; font-weight: 800; color: var(--primary-color); margin: 0.3rem 0; }
+        .user-table { width: 100%; border-collapse: collapse; margin-top: 1rem; font-size: 0.9rem; }
+        .user-table th, .user-table td { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-color); text-align: left; }
+        .user-table th { background: var(--bg-dark); color: var(--text-muted); font-weight: 700; }
+        .badge-role-admin { background: var(--accent-red-bg); color: var(--accent-red); border: 1px solid var(--accent-red-border); padding: 0.2rem 0.5rem; border-radius: 0.3rem; font-weight: 700; }
+        .badge-role-teacher { background: var(--primary-light); color: var(--primary-color); border: 1px solid var(--primary-border); padding: 0.2rem 0.5rem; border-radius: 0.3rem; font-weight: 700; }
+        .badge-role-student { background: var(--accent-green-bg); color: var(--accent-green); border: 1px solid var(--accent-green-border); padding: 0.2rem 0.5rem; border-radius: 0.3rem; font-weight: 700; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <span>🛡️</span>
+            <span>SIGNBRIDGE Platform Administration</span>
+        </div>
+        <div class="nav-links">
+            <a href="/" class="btn btn-secondary">🏠 Main Menu</a>
+        </div>
+    </nav>
+
+    <div class="container" style="max-width: 1400px; margin-top: 2rem;">
+        <h2>⚙️ System Overview & User Management</h2>
+        <p style="color: #94a3b8;">Manage registered system users, review role-based authorizations, and monitor AI engine health.</p>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-top: 1.5rem;">
+            <div class="stat-card">
+                <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 700;">TOTAL USERS</div>
+                <div class="stat-val" id="stat-user-count">{{ users|length }}</div>
+                <div style="font-size: 0.75rem; color: #10b981;">Active User Accounts</div>
+            </div>
+            <div class="stat-card">
+                <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 700;">AI INFERENCE MODEL</div>
+                <div class="stat-val" style="color: #10b981; font-size: 1.2rem; margin-top: 0.8rem;">best_model_252.pth</div>
+                <div style="font-size: 0.75rem; color: #38bdf8;">252D Feature Engine</div>
+            </div>
+            <div class="stat-card">
+                <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 700;">SUPPORTED LANGUAGES</div>
+                <div class="stat-val" style="color: #f59e0b;">EN / HI / TE</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">Vernacular Pipeline</div>
+            </div>
+            <div class="stat-card">
+                <div style="color: #94a3b8; font-size: 0.85rem; font-weight: 700;">SYSTEM STATUS</div>
+                <div class="stat-val" style="color: #34d399;" id="system-status-val">🟢 HEALTHY</div>
+                <div style="font-size: 0.75rem; color: #94a3b8;">All Services Operational</div>
+            </div>
+        </div>
+
+        <div class="admin-grid">
+            <!-- CREATE USER FORM -->
+            <aside class="glass-card">
+                <h3>➕ Register New User</h3>
+                <form id="createUserForm" onsubmit="handleCreateUser(event)" style="margin-top: 1rem; display: flex; flex-direction: column; gap: 1rem;">
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">Username</label>
+                        <input type="text" id="newUsername" required placeholder="e.g. rahul_teacher" style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem; margin-top: 0.3rem;">
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">Full Name</label>
+                        <input type="text" id="newFullName" required placeholder="e.g. Rahul Sharma" style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem; margin-top: 0.3rem;">
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">Password</label>
+                        <input type="password" id="newPassword" required style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem; margin-top: 0.3rem;">
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">System Role</label>
+                        <select id="newRole" style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem; margin-top: 0.3rem;">
+                            <option value="student">Student</option>
+                            <option value="teacher">Teacher</option>
+                            <option value="admin">Administrator</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label style="color: var(--text-muted); font-size: 0.85rem; font-weight: 600;">Email (Optional)</label>
+                        <input type="email" id="newEmail" placeholder="user@school.edu" style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem; margin-top: 0.3rem;">
+                    </div>
+                    <button type="submit" class="btn btn-primary" style="margin-top: 0.5rem; justify-content: center;">Create Account</button>
+                </form>
+            </aside>
+
+            <!-- USERS LIST TABLE -->
+            <main class="glass-card">
+                <h3>👥 System Accounts</h3>
+                <table class="user-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Username</th>
+                            <th>Full Name</th>
+                            <th>Role</th>
+                            <th>Email</th>
+                            <th>Created At</th>
+                        </tr>
+                    </thead>
+                    <tbody id="userTableBody">
+                        {% for u in users %}
+                        <tr>
+                            <td>{{ u.id }}</td>
+                            <td><strong>{{ u.username }}</strong></td>
+                            <td>{{ u.full_name }}</td>
+                            <td>
+                                <span class="badge-role-{{ u.role }}">{{ u.role|upper }}</span>
+                            </td>
+                            <td>{{ u.email or '-' }}</td>
+                            <td style="color: #94a3b8; font-size: 0.8rem;">{{ u.created_at }}</td>
+                        </tr>
+                        {% else %}
+                        <tr><td colspan="6" style="text-align: center; color: #94a3b8;">No registered users found. Add users using the form on the left.</td></tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </main>
+        </div>
+    </div>
+
+    <script>
+        async function handleCreateUser(e) {
+            e.preventDefault();
+            const username = document.getElementById('newUsername').value;
+            const full_name = document.getElementById('newFullName').value;
+            const password = document.getElementById('newPassword').value;
+            const role = document.getElementById('newRole').value;
+            const email = document.getElementById('newEmail').value;
+
+            try {
+                const res = await fetch('/api/admin/create_user', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({username, full_name, password, role, email})
+                });
+                const data = await res.json();
+                if (data.status === 'success') {
+                    alert('User created successfully!');
+                    location.reload();
+                } else {
+                    alert('Error creating user: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Network error: ' + err.message);
+            }
+        }
+    </script>
+</body>
+</html>

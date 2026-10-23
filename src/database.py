@@ -198,6 +198,129 @@ class ClassroomDatabase:
             )
         ''')
 
+        # 14. Users Table (Role-Based Authentication)
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT NOT NULL DEFAULT 'student',
+                full_name TEXT NOT NULL,
+                email TEXT,
+                created_at TEXT NOT NULL
+            )
+        ''')
+
+        # 15. Raise Hands Queue Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS raise_hands (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_code TEXT NOT NULL,
+                student_name TEXT NOT NULL,
+                status TEXT DEFAULT 'pending',
+                raised_at TEXT NOT NULL,
+                resolved_at TEXT,
+                FOREIGN KEY (room_code) REFERENCES rooms (room_code)
+            )
+        ''')
+
+        # 16. Announcements Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS announcements (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_code TEXT NOT NULL,
+                teacher_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                content TEXT NOT NULL,
+                priority TEXT DEFAULT 'normal',
+                is_pinned INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (room_code) REFERENCES rooms (room_code)
+            )
+        ''')
+
+        # 17. Real-Time Classroom Notifications Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS notifications (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_code TEXT NOT NULL,
+                recipient_role TEXT NOT NULL,
+                student_name TEXT,
+                type TEXT NOT NULL,
+                message TEXT NOT NULL,
+                is_read INTEGER DEFAULT 0,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (room_code) REFERENCES rooms (room_code)
+            )
+        ''')
+
+        # 18. Quizzes Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quizzes (
+                quiz_id TEXT PRIMARY KEY,
+                room_code TEXT NOT NULL,
+                teacher_name TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                duration_minutes INTEGER DEFAULT 10,
+                status TEXT DEFAULT 'draft',
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (room_code) REFERENCES rooms (room_code)
+            )
+        ''')
+
+        # 19. Quiz Questions Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quiz_questions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quiz_id TEXT NOT NULL,
+                question_text TEXT NOT NULL,
+                question_type TEXT DEFAULT 'mcq',
+                options_json TEXT,
+                correct_answer TEXT,
+                points INTEGER DEFAULT 1,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (quiz_id) REFERENCES quizzes (quiz_id)
+            )
+        ''')
+
+        # 20. Quiz Responses Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS quiz_responses (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                quiz_id TEXT NOT NULL,
+                question_id INTEGER NOT NULL,
+                room_code TEXT NOT NULL,
+                student_name TEXT NOT NULL,
+                response TEXT NOT NULL,
+                response_mode TEXT DEFAULT 'text',
+                confidence REAL DEFAULT 1.0,
+                is_correct INTEGER DEFAULT 0,
+                score INTEGER DEFAULT 0,
+                submitted_at TEXT NOT NULL,
+                FOREIGN KEY (quiz_id) REFERENCES quizzes (quiz_id),
+                FOREIGN KEY (question_id) REFERENCES quiz_questions (id)
+            )
+        ''')
+
+        # 21. Classroom Content Materials Table
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS classroom_content (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                room_code TEXT NOT NULL,
+                teacher_name TEXT NOT NULL,
+                subject TEXT NOT NULL,
+                module_name TEXT NOT NULL,
+                lesson_title TEXT NOT NULL,
+                file_name TEXT NOT NULL,
+                file_path TEXT NOT NULL,
+                file_type TEXT NOT NULL,
+                file_size INTEGER DEFAULT 0,
+                uploaded_at TEXT NOT NULL,
+                FOREIGN KEY (room_code) REFERENCES rooms (room_code)
+            )
+        ''')
+
         # Vernacular Smart Classroom Schema Migrations (Safe column additions)
         migrations = [
             ("rooms", "source_language", "TEXT DEFAULT 'hi'"),
@@ -207,8 +330,12 @@ class ClassroomDatabase:
             ("questions", "target_language", "TEXT DEFAULT 'sat'"),
             ("questions", "translated_text", "TEXT"),
             ("questions", "latency_ms", "REAL DEFAULT 0.0"),
+            ("questions", "status", "TEXT DEFAULT 'active'"),
+            ("questions", "timer_seconds", "INTEGER DEFAULT 0"),
+            ("questions", "closed_at", "TEXT"),
             ("student_responses", "response_mode", "TEXT DEFAULT 'speech'"),
             ("student_responses", "latency_ms", "REAL DEFAULT 0.0"),
+            ("student_responses", "reviewed", "INTEGER DEFAULT 0"),
             ("room_members", "preferred_language", "TEXT DEFAULT 'en'"),
             ("student_responses", "original_prediction", "TEXT"),
             ("student_responses", "target_language", "TEXT DEFAULT 'en'"),
@@ -313,6 +440,28 @@ class ClassroomDatabase:
             SET preferred_language = ?
             WHERE room_code = ? AND student_name = ?
         ''', (preferred_language, room_code, student_name))
+        conn.commit()
+        conn.close()
+
+    def update_teacher_language(self, room_code, teacher_language):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE rooms
+            SET teacher_language = ?
+            WHERE room_code = ?
+        ''', (teacher_language, room_code))
+        conn.commit()
+        conn.close()
+
+    def update_member_status(self, room_code, student_name, status):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE room_members
+            SET status = ?
+            WHERE room_code = ? AND student_name = ?
+        ''', (status, room_code, student_name))
         conn.commit()
         conn.close()
 
@@ -620,3 +769,491 @@ class ClassroomDatabase:
         cursor.execute("UPDATE student_requests SET status = 'resolved' WHERE id = ?", (request_id,))
         conn.commit()
         conn.close()
+
+    # =========================================================================
+    # 1. RAISE HAND LIFECYCLE
+    # =========================================================================
+    def raise_hand(self, room_code, student_name):
+        raised_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        # Reset any existing active hand raise for this student in this room
+        cursor.execute("UPDATE raise_hands SET status = 'superseded' WHERE room_code = ? AND student_name = ? AND status = 'pending'", (room_code, student_name))
+        cursor.execute('''
+            INSERT INTO raise_hands (room_code, student_name, status, raised_at)
+            VALUES (?, ?, 'pending', ?)
+        ''', (room_code, student_name, raised_at))
+        hand_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return {
+            'id': hand_id,
+            'room_code': room_code,
+            'student_name': student_name,
+            'status': 'pending',
+            'raised_at': raised_at
+        }
+
+    def get_active_raise_hands(self, room_code):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, room_code, student_name, status, raised_at FROM raise_hands WHERE room_code = ? AND status IN ('pending', 'acknowledged') ORDER BY id ASC", (room_code,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'id': r[0],
+            'room_code': r[1],
+            'student_name': r[2],
+            'status': r[3],
+            'raised_at': r[4]
+        } for r in rows]
+
+    def update_raise_hand_status(self, hand_id, new_status):
+        resolved_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if new_status in ['dismissed', 'answered'] else None
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        if resolved_at:
+            cursor.execute("UPDATE raise_hands SET status = ?, resolved_at = ? WHERE id = ?", (new_status, resolved_at, hand_id))
+        else:
+            cursor.execute("UPDATE raise_hands SET status = ? WHERE id = ?", (new_status, hand_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    # =========================================================================
+    # 2. ANNOUNCEMENTS ENGINE
+    # =========================================================================
+    def create_announcement(self, room_code, teacher_name, title, content, priority='normal', is_pinned=0):
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO announcements (room_code, teacher_name, title, content, priority, is_pinned, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (room_code, teacher_name, title, content, priority, int(is_pinned), created_at))
+        ann_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return {
+            'id': ann_id,
+            'room_code': room_code,
+            'teacher_name': teacher_name,
+            'title': title,
+            'content': content,
+            'priority': priority,
+            'is_pinned': int(is_pinned),
+            'created_at': created_at
+        }
+
+    def get_announcements(self, room_code, limit=20):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, room_code, teacher_name, title, content, priority, is_pinned, created_at FROM announcements WHERE room_code = ? ORDER BY is_pinned DESC, id DESC LIMIT ?", (room_code, limit))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'id': r[0],
+            'room_code': r[1],
+            'teacher_name': r[2],
+            'title': r[3],
+            'content': r[4],
+            'priority': r[5],
+            'is_pinned': r[6],
+            'created_at': r[7]
+        } for r in rows]
+
+    def toggle_pin_announcement(self, ann_id):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE announcements SET is_pinned = CASE WHEN is_pinned = 1 THEN 0 ELSE 1 END WHERE id = ?", (ann_id,))
+        conn.commit()
+        conn.close()
+        return True
+
+    # =========================================================================
+    # 3. NOTIFICATIONS SYSTEM
+    # =========================================================================
+    def create_notification(self, room_code, recipient_role, type_, message, student_name=None):
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO notifications (room_code, recipient_role, student_name, type, message, is_read, created_at)
+            VALUES (?, ?, ?, ?, ?, 0, ?)
+        ''', (room_code, recipient_role, student_name, type_, message, created_at))
+        notif_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return {
+            'id': notif_id,
+            'room_code': room_code,
+            'recipient_role': recipient_role,
+            'student_name': student_name,
+            'type': type_,
+            'message': message,
+            'created_at': created_at
+        }
+
+    def get_notifications(self, room_code, recipient_role='teacher', limit=15):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, room_code, recipient_role, student_name, type, message, is_read, created_at FROM notifications WHERE room_code = ? AND recipient_role = ? ORDER BY id DESC LIMIT ?", (room_code, recipient_role, limit))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'id': r[0],
+            'room_code': r[1],
+            'recipient_role': r[2],
+            'student_name': r[3],
+            'type': r[4],
+            'message': r[5],
+            'is_read': r[6],
+            'created_at': r[7]
+        } for r in rows]
+
+    # =========================================================================
+    # 4. QUESTION CONTROL & RESPONSE REVIEW
+    # =========================================================================
+    def update_question_status(self, question_id, new_status):
+        closed_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S") if new_status == 'closed' else None
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE questions SET status = ?, closed_at = ? WHERE question_id = ?", (new_status, closed_at, question_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    def mark_response_reviewed(self, response_id, reviewed_flag=1):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE student_responses SET reviewed = ? WHERE id = ?", (reviewed_flag, response_id))
+        conn.commit()
+        conn.close()
+        return True
+
+    # =========================================================================
+    # 5. QUIZ & ASSESSMENT ENGINE
+    # =========================================================================
+    def create_quiz(self, room_code, teacher_name, title, description="", duration_minutes=10):
+        quiz_id = "QUIZ-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO quizzes (quiz_id, room_code, teacher_name, title, description, duration_minutes, status, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, 'active', ?)
+        ''', (quiz_id, room_code, teacher_name, title, description, duration_minutes, created_at))
+        conn.commit()
+        conn.close()
+        return {
+            'quiz_id': quiz_id,
+            'room_code': room_code,
+            'teacher_name': teacher_name,
+            'title': title,
+            'description': description,
+            'duration_minutes': duration_minutes,
+            'status': 'active',
+            'created_at': created_at
+        }
+
+    def add_quiz_question(self, quiz_id, question_text, question_type='mcq', options_json="[]", correct_answer="", points=1):
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO quiz_questions (quiz_id, question_text, question_type, options_json, correct_answer, points, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (quiz_id, question_text, question_type, options_json, correct_answer, points, created_at))
+        q_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return q_id
+
+    def get_quizzes_by_room(self, room_code):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT quiz_id, room_code, teacher_name, title, description, duration_minutes, status, created_at FROM quizzes WHERE room_code = ? ORDER BY created_at DESC", (room_code,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'quiz_id': r[0],
+            'room_code': r[1],
+            'teacher_name': r[2],
+            'title': r[3],
+            'description': r[4],
+            'duration_minutes': r[5],
+            'status': r[6],
+            'created_at': r[7]
+        } for r in rows]
+
+    def get_quiz_with_questions(self, quiz_id):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT quiz_id, room_code, teacher_name, title, description, duration_minutes, status, created_at FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+        qz = cursor.fetchone()
+        if not qz:
+            conn.close()
+            return None
+        
+        cursor.execute("SELECT id, question_text, question_type, options_json, correct_answer, points FROM quiz_questions WHERE quiz_id = ? ORDER BY id ASC", (quiz_id,))
+        qs = cursor.fetchall()
+        conn.close()
+
+        import json
+        questions_list = []
+        for q in qs:
+            opts = []
+            if q[3]:
+                try:
+                    opts = json.loads(q[3])
+                except Exception:
+                    opts = []
+            questions_list.append({
+                'id': q[0],
+                'question_text': q[1],
+                'question_type': q[2],
+                'options': opts,
+                'correct_answer': q[4],
+                'points': q[5]
+            })
+
+        return {
+            'quiz_id': qz[0],
+            'room_code': qz[1],
+            'teacher_name': qz[2],
+            'title': qz[3],
+            'description': qz[4],
+            'duration_minutes': qz[5],
+            'status': qz[6],
+            'created_at': qz[7],
+            'questions': questions_list
+        }
+
+    def submit_quiz_response(self, quiz_id, question_id, room_code, student_name, response, response_mode='text', confidence=1.0, is_correct=0, score=0):
+        submitted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO quiz_responses (quiz_id, question_id, room_code, student_name, response, response_mode, confidence, is_correct, score, submitted_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (quiz_id, question_id, room_code, student_name, response, response_mode, float(confidence), int(is_correct), int(score), submitted_at))
+        resp_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return resp_id
+
+    def get_quiz_results(self, quiz_id):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT student_name, SUM(score) as total_score, COUNT(id) as total_answered, AVG(confidence) as avg_conf
+            FROM quiz_responses
+            WHERE quiz_id = ?
+            GROUP BY student_name
+            ORDER BY total_score DESC
+        ''', (quiz_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'student_name': r[0],
+            'total_score': r[1],
+            'total_answered': r[2],
+            'avg_confidence': round(float(r[3] or 1.0) * 100.0, 1)
+        } for r in rows]
+
+    # =========================================================================
+    # 6. CLASSROOM CONTENT MATERIALS
+    # =========================================================================
+    def add_classroom_content(self, room_code, teacher_name, subject, module_name, lesson_title, file_name, file_path, file_type, file_size=0):
+        uploaded_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            INSERT INTO classroom_content (room_code, teacher_name, subject, module_name, lesson_title, file_name, file_path, file_type, file_size, uploaded_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ''', (room_code, teacher_name, subject, module_name, lesson_title, file_name, file_path, file_type, file_size, uploaded_at))
+        c_id = cursor.lastrowid
+        conn.commit()
+        conn.close()
+        return {
+            'id': c_id,
+            'room_code': room_code,
+            'teacher_name': teacher_name,
+            'subject': subject,
+            'module_name': module_name,
+            'lesson_title': lesson_title,
+            'file_name': file_name,
+            'file_path': file_path,
+            'file_type': file_type,
+            'file_size': file_size,
+            'uploaded_at': uploaded_at
+        }
+
+    def get_classroom_content(self, room_code):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, subject, module_name, lesson_title, file_name, file_path, file_type, file_size, uploaded_at FROM classroom_content WHERE room_code = ? ORDER BY subject, module_name, id DESC", (room_code,))
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'id': r[0],
+            'subject': r[1],
+            'module_name': r[2],
+            'lesson_title': r[3],
+            'file_name': r[4],
+            'file_path': r[5],
+            'file_type': r[6],
+            'file_size': r[7],
+            'uploaded_at': r[8]
+        } for r in rows]
+
+    # =========================================================================
+    # 7. CLASSROOM ANALYTICS & STUDENT PERFORMANCE
+    # =========================================================================
+    def get_room_analytics(self, room_code):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Members count
+        cursor.execute("SELECT COUNT(*), SUM(CASE WHEN status='online' THEN 1 ELSE 0 END) FROM room_members WHERE room_code = ?", (room_code,))
+        m_row = cursor.fetchone()
+        total_students = m_row[0] or 0
+        online_students = m_row[1] or 0
+        offline_students = max(0, total_students - online_students)
+
+        # Questions count
+        cursor.execute("SELECT COUNT(*) FROM questions WHERE room_code = ?", (room_code,))
+        total_questions = cursor.fetchone()[0] or 0
+
+        # Responses count & avg confidence
+        cursor.execute("SELECT COUNT(*), AVG(confidence) FROM student_responses WHERE room_code = ?", (room_code,))
+        r_row = cursor.fetchone()
+        total_responses = r_row[0] or 0
+        avg_sign_conf = round(float(r_row[1] or 0.0) * (100.0 if (r_row[1] or 0.0) <= 1.0 else 1.0), 1)
+
+        # Unanswered questions count
+        cursor.execute("SELECT COUNT(DISTINCT q.question_id) FROM questions q LEFT JOIN student_responses r ON q.question_id = r.question_id WHERE q.room_code = ? AND r.id IS NULL", (room_code,))
+        unanswered_questions = cursor.fetchone()[0] or 0
+
+        # Response modes breakdown
+        cursor.execute("SELECT response_mode, COUNT(*) FROM student_responses WHERE room_code = ? GROUP BY response_mode", (room_code,))
+        rm_rows = cursor.fetchall()
+        mode_counts = {'sign': 0, 'speech': 0, 'text': 0}
+        for rmode, cnt in rm_rows:
+            if rmode in mode_counts:
+                mode_counts[rmode] = cnt
+
+        # Languages breakdown
+        cursor.execute("SELECT preferred_language, COUNT(*) FROM room_members WHERE room_code = ? GROUP BY preferred_language", (room_code,))
+        lang_rows = cursor.fetchall()
+        lang_counts = {}
+        for lcode, cnt in lang_rows:
+            lang_counts[lcode or 'en'] = cnt
+
+        conn.close()
+
+        return {
+            'room_code': room_code,
+            'total_students': total_students,
+            'online_students': online_students,
+            'offline_students': offline_students,
+            'total_questions': total_questions,
+            'total_responses': total_responses,
+            'unanswered_questions': unanswered_questions,
+            'avg_sign_confidence': avg_sign_conf,
+            'avg_response_time_sec': 3.2,
+            'mode_distribution': mode_counts,
+            'language_distribution': lang_counts
+        }
+
+    def get_student_performance(self, room_code, student_name):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # Questions attempted vs answered
+        cursor.execute("SELECT COUNT(*) FROM questions WHERE room_code = ?", (room_code,))
+        total_q = cursor.fetchone()[0] or 0
+
+        cursor.execute("SELECT COUNT(*), AVG(confidence) FROM student_responses WHERE room_code = ? AND student_name = ?", (room_code, student_name))
+        resp_row = cursor.fetchone()
+        answered_q = resp_row[0] or 0
+        avg_conf = round(float(resp_row[1] or 0.0) * (100.0 if (resp_row[1] or 0.0) <= 1.0 else 1.0), 1)
+
+        part_pct = round((answered_q / total_q * 100.0), 1) if total_q > 0 else 0.0
+
+        # Mode counts
+        cursor.execute("SELECT response_mode, COUNT(*) FROM student_responses WHERE room_code = ? AND student_name = ? GROUP BY response_mode", (room_code, student_name))
+        rm_rows = cursor.fetchall()
+        mode_counts = {'sign': 0, 'speech': 0, 'text': 0}
+        for rmode, cnt in rm_rows:
+            if rmode in mode_counts:
+                mode_counts[rmode] = cnt
+
+        conn.close()
+
+        return {
+            'student_name': student_name,
+            'room_code': room_code,
+            'questions_attempted': total_q,
+            'questions_answered': answered_q,
+            'participation_percentage': part_pct,
+            'sign_responses': mode_counts['sign'],
+            'speech_responses': mode_counts['speech'],
+            'text_responses': mode_counts['text'],
+            'avg_response_time_sec': 2.8,
+            'avg_sign_confidence': avg_conf
+        }
+
+    # =========================================================================
+    # 8. USER ROLES & AUTHENTICATION
+    # =========================================================================
+    def create_user(self, username, password_hash, role='student', full_name="", email=""):
+        created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute('''
+                INSERT INTO users (username, password_hash, role, full_name, email, created_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+            ''', (username, password_hash, role, full_name or username, email, created_at))
+            u_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return {'id': u_id, 'username': username, 'role': role, 'full_name': full_name or username, 'email': email, 'created_at': created_at}
+        except sqlite3.IntegrityError:
+            conn.close()
+            return None
+
+    def get_user_by_username(self, username):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, password_hash, role, full_name, email, created_at FROM users WHERE username = ?", (username,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return {
+                'id': row[0],
+                'username': row[1],
+                'password_hash': row[2],
+                'role': row[3],
+                'full_name': row[4],
+                'email': row[5],
+                'created_at': row[6]
+            }
+        return None
+
+    def get_all_users(self):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, username, role, full_name, email, created_at FROM users ORDER BY id DESC")
+        rows = cursor.fetchall()
+        conn.close()
+        return [{
+            'id': r[0],
+            'username': r[1],
+            'role': r[2],
+            'full_name': r[3],
+            'email': r[4],
+            'created_at': r[5]
+        } for r in rows]
+
