@@ -204,17 +204,20 @@ body {
 }
 
 /* Camera Stream Container */
-.video-wrapper {
+.video-wrapper, .cam-wrapper {
     position: relative;
     width: 100%;
-    aspect-ratio: 16/9;
+    max-width: 500px;
+    height: 280px;
+    margin: 0 auto;
     background: #000;
-    border-radius: 1rem;
+    border-radius: 0.75rem;
     overflow: hidden;
     border: 1px solid var(--border-color);
 }
 
-.video-wrapper video, .video-wrapper canvas {
+.video-wrapper video, .video-wrapper canvas,
+.cam-wrapper video, .cam-wrapper canvas {
     width: 100%;
     height: 100%;
     object-fit: cover;
