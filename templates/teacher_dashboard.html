@@ -247,27 +247,59 @@
                     
                     <div style="background: var(--bg-dark); padding: 1.2rem; border-radius: 0.5rem; border: 1px solid var(--border-color); margin-bottom: 1.5rem;">
                         <h4 style="color: var(--primary-color); margin-bottom: 0.8rem;">Create New Quiz</h4>
-                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
-                            <input type="text" id="quizTitle" placeholder="Quiz Title (e.g. Science Assessment 1)" style="padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem;">
-                            <input type="number" id="quizDuration" placeholder="Duration (minutes)" value="10" style="padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem;">
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 0.8rem;">
+                            <div>
+                                <label for="quizTitle" style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:0.3rem;">Quiz Title *</label>
+                                <input type="text" id="quizTitle" placeholder="Quiz Title (e.g. Science Assessment 1)" style="width:100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem;">
+                            </div>
+                            <div>
+                                <label for="quizDuration" style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:0.3rem;">Duration (minutes) *</label>
+                                <input type="number" id="quizDuration" placeholder="Duration (minutes)" value="10" min="1" max="300" style="width:100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem;">
+                            </div>
+                        </div>
+                        <div style="margin-bottom: 1rem;">
+                            <label for="quizDescription" style="display:block; font-size:0.8rem; font-weight:700; color:var(--text-muted); margin-bottom:0.3rem;">Description / Instructions (Optional)</label>
+                            <input type="text" id="quizDescription" placeholder="Brief instructions for students..." style="width: 100%; padding: 0.6rem; background: #ffffff; border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.4rem;">
                         </div>
 
                         <div id="quiz-questions-builder" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1rem;">
-                            <div class="quiz-q-item" style="background: #ffffff; padding: 0.8rem; border-radius: 0.4rem; border: 1px solid #cbd5e1;">
-                                <input type="text" class="qz-q-text" placeholder="Question 1 text..." style="width: 100%; padding: 0.5rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.3rem; margin-bottom: 0.5rem;">
-                                <div style="display: flex; gap: 0.5rem;">
-                                    <select class="qz-q-type" style="padding: 0.4rem; background: var(--bg-dark); color: var(--text-main); border: 1px solid #cbd5e1; border-radius: 0.3rem;">
-                                        <option value="mcq">Multiple Choice</option>
-                                        <option value="text">Text Response</option>
-                                        <option value="sign">Sign Response</option>
-                                    </select>
-                                    <input type="text" class="qz-q-options" placeholder="Options comma-separated" style="flex-grow: 1; padding: 0.4rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.3rem;">
-                                    <input type="text" class="qz-q-ans" placeholder="Correct Answer" style="width: 140px; padding: 0.4rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.3rem;">
-                                </div>
-                            </div>
+                            <!-- Question cards rendered dynamically -->
                         </div>
 
-                        <button class="btn btn-primary" onclick="submitCreateQuiz()">✨ Publish Quiz to Classroom</button>
+                        <div id="quiz-builder-feedback" role="status" style="display:none; padding:0.75rem 1rem; border-radius:0.4rem; margin-bottom:0.9rem; font-size:0.9rem; font-weight:600;"></div>
+
+                        <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: space-between; align-items: center;">
+                            <button type="button" class="btn btn-secondary" onclick="addQuizQuestion()">➕ Add Question</button>
+                            <button type="button" id="btn-publish-quiz" class="btn btn-primary" onclick="submitCreateQuiz()">✨ Publish Quiz to Classroom</button>
+                        </div>
+                    </div>
+
+                    <!-- PUBLISHED QUIZZES & STUDENT RESULTS -->
+                    <div style="background: var(--bg-dark); padding: 1.2rem; border-radius: 0.5rem; border: 1px solid var(--border-color);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; gap: 0.75rem; flex-wrap: wrap; margin-bottom: 1rem;">
+                            <div>
+                                <h4 style="color: var(--primary-color); margin: 0;">📊 Published Quizzes & Student Results</h4>
+                                <p style="font-size: 0.85rem; color: var(--text-muted); margin: 0.2rem 0 0 0;">Select a quiz to inspect student scores, completion status, and marks.</p>
+                            </div>
+                            <button type="button" class="btn btn-secondary" onclick="loadTeacherQuizzes()" style="padding: 0.35rem 0.8rem; font-size: 0.85rem;">🔄 Refresh Quizzes</button>
+                        </div>
+
+                        <div id="teacher-quizzes-list" style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.25rem;">
+                            <p style="color: var(--text-muted); font-size: 0.9rem;">Loading classroom quizzes...</p>
+                        </div>
+
+                        <div id="teacher-quiz-results-panel" style="display: none; background: #ffffff; border: 1px solid var(--border-color); border-radius: 0.5rem; padding: 1rem;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.8rem;">
+                                <div>
+                                    <h5 id="results-quiz-title" style="margin: 0; font-size: 1.05rem; color: var(--text-main);">Quiz Results</h5>
+                                    <small id="results-quiz-meta" style="color: var(--text-muted);"></small>
+                                </div>
+                                <button type="button" class="btn btn-secondary" onclick="refreshSelectedQuizResults()" style="padding: 0.3rem 0.7rem; font-size: 0.8rem;">🔄 Refresh Results</button>
+                            </div>
+                            <div id="teacher-quiz-results-container" style="overflow-x: auto;">
+                                <!-- Results table rendered dynamically -->
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -349,6 +381,7 @@
             btnEl.classList.add('active');
             document.getElementById(tabId).classList.add('active');
 
+            if (tabId === 'tab-quiz') loadTeacherQuizzes();
             if (tabId === 'tab-announcements') loadAnnouncements();
             if (tabId === 'tab-content') loadContent();
         }
@@ -379,6 +412,14 @@
 
         socket.on('raise_hand_action_broadcast', () => {
             loadRaiseHands();
+        });
+
+        socket.on('quiz_submitted_broadcast', (data) => {
+            showToast(`📝 ${data.student_name} submitted a quiz!`, 'Quiz Submission');
+            if (selectedResultsQuizId && data.quiz_id === selectedResultsQuizId) {
+                loadQuizResults(selectedResultsQuizId);
+            }
+            loadTeacherQuizzes();
         });
 
         function updateStudentRoster(name, lang, status) {
@@ -569,35 +610,319 @@
             `).join('') || '<p style="color:#94a3b8;">No content uploaded yet.</p>';
         }
 
-        async function submitCreateQuiz() {
-            const title = document.getElementById('quizTitle').value.trim();
-            const duration = parseInt(document.getElementById('quizDuration').value);
-            if (!title) return alert("Please enter quiz title.");
+        let selectedResultsQuizId = null;
 
-            const items = document.querySelectorAll('.quiz-q-item');
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function setQuizFeedback(message, isError=false) {
+            const box = document.getElementById('quiz-builder-feedback');
+            if (!box) return;
+            if (!message) {
+                box.style.display = 'none';
+                box.textContent = '';
+                return;
+            }
+            box.style.display = 'block';
+            box.style.background = isError ? 'var(--accent-red-bg)' : 'var(--accent-green-bg)';
+            box.style.border = isError ? '1px solid var(--accent-red-border)' : '1px solid var(--accent-green-border)';
+            box.style.color = isError ? 'var(--accent-red)' : 'var(--accent-green)';
+            box.textContent = message;
+        }
+
+        function updateQuizQuestionNumbers() {
+            const items = document.querySelectorAll('#quiz-questions-builder .quiz-q-item');
+            items.forEach((item, index) => {
+                const titleEl = item.querySelector('.qz-q-number');
+                if (titleEl) titleEl.textContent = `Question #${index + 1}`;
+                const removeBtn = item.querySelector('.qz-q-remove');
+                if (removeBtn) removeBtn.disabled = items.length <= 1;
+            });
+        }
+
+        function onQuestionTypeChange(selectEl) {
+            const item = selectEl.closest('.quiz-q-item');
+            const optionsWrap = item.querySelector('.qz-q-options-wrap');
+            const ansInput = item.querySelector('.qz-q-ans');
+            const type = selectEl.value;
+            if (type === 'mcq') {
+                optionsWrap.style.display = 'block';
+                ansInput.placeholder = 'Correct option (exact match)';
+            } else if (type === 'sign') {
+                optionsWrap.style.display = 'none';
+                ansInput.placeholder = 'Expected sign word/phrase (e.g. HELLO)';
+            } else {
+                optionsWrap.style.display = 'none';
+                ansInput.placeholder = 'Expected text answer';
+            }
+        }
+
+        function addQuizQuestion() {
+            const builder = document.getElementById('quiz-questions-builder');
+            const card = document.createElement('div');
+            card.className = 'quiz-q-item';
+            card.style.cssText = 'background: #ffffff; padding: 0.9rem; border-radius: 0.45rem; border: 1px solid #cbd5e1;';
+            card.innerHTML = `
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:0.5rem;">
+                    <strong class="qz-q-number" style="font-size:0.85rem; color:var(--primary-color);">Question</strong>
+                    <button type="button" class="btn btn-danger qz-q-remove" onclick="removeQuizQuestion(this)" style="padding:0.2rem 0.55rem; font-size:0.75rem;">🗑 Remove</button>
+                </div>
+                <input type="text" class="qz-q-text" placeholder="Enter question prompt..." style="width: 100%; padding: 0.55rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.35rem; margin-bottom: 0.6rem;">
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.5rem; align-items: end;">
+                    <div>
+                        <label style="display:block; font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">Question Type</label>
+                        <select class="qz-q-type" onchange="onQuestionTypeChange(this)" style="width:100%; padding: 0.45rem; background: var(--bg-dark); color: var(--text-main); border: 1px solid #cbd5e1; border-radius: 0.35rem;">
+                            <option value="mcq">Multiple Choice</option>
+                            <option value="text">Text Response</option>
+                            <option value="sign">Sign Response</option>
+                        </select>
+                    </div>
+                    <div class="qz-q-options-wrap">
+                        <label style="display:block; font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">MCQ Options (comma-separated)</label>
+                        <input type="text" class="qz-q-options" placeholder="e.g. Mars, Venus, Earth, Jupiter" style="width:100%; padding: 0.45rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.35rem;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">Correct Answer</label>
+                        <input type="text" class="qz-q-ans" placeholder="Correct option (exact match)" style="width:100%; padding: 0.45rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.35rem;">
+                    </div>
+                    <div>
+                        <label style="display:block; font-size:0.75rem; color:var(--text-muted); font-weight:600; margin-bottom:0.2rem;">Points</label>
+                        <input type="number" class="qz-q-points" value="1" min="1" max="100" style="width:100%; padding: 0.45rem; background: var(--bg-dark); border: 1px solid #cbd5e1; color: var(--text-main); border-radius: 0.35rem;">
+                    </div>
+                </div>
+            `;
+            builder.appendChild(card);
+            updateQuizQuestionNumbers();
+        }
+
+        function removeQuizQuestion(btnEl) {
+            const items = document.querySelectorAll('#quiz-questions-builder .quiz-q-item');
+            if (items.length <= 1) return;
+            btnEl.closest('.quiz-q-item').remove();
+            updateQuizQuestionNumbers();
+        }
+
+        function resetQuizBuilder() {
+            document.getElementById('quizTitle').value = '';
+            document.getElementById('quizDuration').value = '10';
+            document.getElementById('quizDescription').value = '';
+            const builder = document.getElementById('quiz-questions-builder');
+            builder.innerHTML = '';
+            addQuizQuestion();
+        }
+
+        async function submitCreateQuiz() {
+            setQuizFeedback('');
+            const title = document.getElementById('quizTitle').value.trim();
+            const duration = parseInt(document.getElementById('quizDuration').value, 10);
+            const description = document.getElementById('quizDescription').value.trim();
+
+            if (!title) {
+                setQuizFeedback('Please enter a quiz title.', true);
+                return;
+            }
+            if (isNaN(duration) || duration < 1 || duration > 300) {
+                setQuizFeedback('Please enter a valid quiz duration between 1 and 300 minutes.', true);
+                return;
+            }
+
+            const items = document.querySelectorAll('#quiz-questions-builder .quiz-q-item');
             const questions = [];
-            items.forEach(item => {
+            for (let idx = 0; idx < items.length; idx++) {
+                const item = items[idx];
                 const text = item.querySelector('.qz-q-text').value.trim();
                 const type = item.querySelector('.qz-q-type').value;
                 const optsRaw = item.querySelector('.qz-q-options').value.trim();
                 const ans = item.querySelector('.qz-q-ans').value.trim();
-                const opts = optsRaw ? optsRaw.split(',').map(s => s.trim()) : [];
-                if (text) questions.push({ question_text: text, question_type: type, options: opts, correct_answer: ans });
-            });
+                const pts = parseInt(item.querySelector('.qz-q-points').value, 10) || 1;
+                const opts = optsRaw ? optsRaw.split(',').map(s => s.trim()).filter(Boolean) : [];
 
-            const res = await fetch('/api/quiz/create', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ room_code: ROOM_CODE, teacher_name: TEACHER_NAME, title, duration_minutes: duration, questions })
-            });
-            const data = await res.json();
-            if (data.status === 'success') {
-                showToast('Quiz published to classroom!', 'Quiz Active');
-                document.getElementById('quizTitle').value = '';
-            } else {
-                alert('Quiz creation failed');
+                if (!text) {
+                    setQuizFeedback(`Question #${idx + 1} cannot be empty.`, true);
+                    return;
+                }
+                if (pts < 1 || pts > 100) {
+                    setQuizFeedback(`Question #${idx + 1} points must be between 1 and 100.`, true);
+                    return;
+                }
+                if (type === 'mcq') {
+                    const uniqueOpts = [...new Set(opts)];
+                    if (uniqueOpts.length < 2) {
+                        setQuizFeedback(`MCQ Question #${idx + 1} needs at least 2 comma-separated options.`, true);
+                        return;
+                    }
+                    if (!ans) {
+                        setQuizFeedback(`MCQ Question #${idx + 1} requires a correct answer.`, true);
+                        return;
+                    }
+                    const matched = uniqueOpts.some(o => o.toLowerCase() === ans.toLowerCase());
+                    if (!matched) {
+                        setQuizFeedback(`MCQ Question #${idx + 1} correct answer ("${ans}") must match one of its options.`, true);
+                        return;
+                    }
+                }
+                questions.push({ question_text: text, question_type: type, options: opts, correct_answer: ans, points: pts });
+            }
+
+            if (questions.length === 0) {
+                setQuizFeedback('Please add at least one question before publishing.', true);
+                return;
+            }
+
+            const btn = document.getElementById('btn-publish-quiz');
+            btn.disabled = true;
+            btn.textContent = 'Publishing...';
+
+            try {
+                const res = await fetch('/api/quiz/create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        room_code: ROOM_CODE,
+                        teacher_name: TEACHER_NAME,
+                        title,
+                        description,
+                        duration_minutes: duration,
+                        questions
+                    })
+                });
+                const data = await res.json();
+                if (res.ok && data.status === 'success') {
+                    showToast('Quiz published to classroom!', 'Quiz Active');
+                    setQuizFeedback(`Quiz "${title}" published successfully (${questions.length} question(s)).`, false);
+                    resetQuizBuilder();
+                    selectedResultsQuizId = data.quiz.quiz_id;
+                    await loadTeacherQuizzes();
+                } else {
+                    setQuizFeedback(data.error || 'Quiz creation failed.', true);
+                }
+            } catch (err) {
+                setQuizFeedback('Network error while publishing quiz: ' + err.message, true);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = '✨ Publish Quiz to Classroom';
             }
         }
+
+        async function loadTeacherQuizzes() {
+            const listEl = document.getElementById('teacher-quizzes-list');
+            if (!listEl) return;
+            try {
+                const res = await fetch(`/api/quizzes/${encodeURIComponent(ROOM_CODE)}`);
+                const data = await res.json();
+                if (!res.ok) {
+                    listEl.innerHTML = `<p style="color:var(--accent-red);">${escapeHtml(data.error || 'Failed to load quizzes.')}</p>`;
+                    return;
+                }
+                const quizzes = data.quizzes || [];
+                if (quizzes.length === 0) {
+                    listEl.innerHTML = '<p style="color:var(--text-muted); font-size:0.9rem;">No quizzes published in this classroom yet.</p>';
+                    document.getElementById('teacher-quiz-results-panel').style.display = 'none';
+                    return;
+                }
+
+                listEl.innerHTML = quizzes.map(q => `
+                    <div class="timeline-item" style="background:#ffffff; display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+                        <div>
+                            <div style="display:flex; align-items:center; gap:0.5rem; flex-wrap:wrap;">
+                                <strong style="color:var(--text-main);">📝 ${escapeHtml(q.title)}</strong>
+                                <span class="badge badge-success">${escapeHtml((q.status || 'active').toUpperCase())}</span>
+                                <span class="badge" style="background:var(--primary-light); color:var(--primary-color); border:1px solid var(--primary-border);">${q.question_count ?? 0} Qs • ${q.total_marks ?? 0} Marks</span>
+                            </div>
+                            <div style="font-size:0.82rem; color:var(--text-muted); margin-top:0.25rem;">
+                                ${q.description ? escapeHtml(q.description) + ' • ' : ''}Duration: ${q.duration_minutes} mins • Submissions: ${q.submission_count ?? 0} • Created: ${escapeHtml(q.created_at)}
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="loadQuizResults('${escapeHtml(q.quiz_id)}')" style="padding:0.4rem 0.9rem; font-size:0.85rem;">📊 View Results</button>
+                    </div>
+                `).join('');
+
+                if (!selectedResultsQuizId) {
+                    selectedResultsQuizId = quizzes[0].quiz_id;
+                }
+                if (selectedResultsQuizId) {
+                    await loadQuizResults(selectedResultsQuizId);
+                }
+            } catch (err) {
+                listEl.innerHTML = `<p style="color:var(--accent-red);">Network error loading quizzes: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        function refreshSelectedQuizResults() {
+            if (selectedResultsQuizId) {
+                loadQuizResults(selectedResultsQuizId);
+            }
+        }
+
+        async function loadQuizResults(quizId) {
+            selectedResultsQuizId = quizId;
+            const panel = document.getElementById('teacher-quiz-results-panel');
+            const titleEl = document.getElementById('results-quiz-title');
+            const metaEl = document.getElementById('results-quiz-meta');
+            const container = document.getElementById('teacher-quiz-results-container');
+            panel.style.display = 'block';
+            container.innerHTML = '<p style="color:var(--text-muted);">Loading results...</p>';
+
+            try {
+                const res = await fetch(`/api/quiz/results/${encodeURIComponent(quizId)}`);
+                const data = await res.json();
+                if (!res.ok) {
+                    container.innerHTML = `<p style="color:var(--accent-red);">${escapeHtml(data.error || 'Could not load quiz results.')}</p>`;
+                    return;
+                }
+
+                const qMeta = data.quiz || {};
+                const results = data.results || [];
+                titleEl.textContent = `📊 Results: ${qMeta.title || quizId}`;
+                metaEl.textContent = `Questions: ${qMeta.total_questions ?? '-'} • Total Marks: ${qMeta.total_marks ?? '-'} • Duration: ${qMeta.duration_minutes ?? '-'} mins`;
+
+                if (results.length === 0) {
+                    container.innerHTML = '<p style="color:var(--text-muted); margin:0.5rem 0;">No student submissions recorded for this quiz yet.</p>';
+                    return;
+                }
+
+                container.innerHTML = `
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Student Name</th>
+                                <th>Answered</th>
+                                <th>Score / Total Marks</th>
+                                <th>Status</th>
+                                <th>Avg Confidence</th>
+                                <th>Submitted At</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${results.map(r => `
+                                <tr>
+                                    <td><strong>🎓 ${escapeHtml(r.student_name)}</strong></td>
+                                    <td>${r.total_answered} / ${r.total_questions}</td>
+                                    <td><strong>${r.total_score} / ${r.total_marks}</strong> (${r.percentage}%)</td>
+                                    <td>
+                                        <span class="badge ${r.submission_status === 'Submitted' ? 'badge-success' : 'badge-warning'}">${escapeHtml(r.submission_status)}</span>
+                                    </td>
+                                    <td>${r.avg_confidence}%</td>
+                                    <td style="font-size:0.82rem; color:var(--text-muted);">${escapeHtml(r.submitted_at || '-')}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
+                `;
+            } catch (err) {
+                container.innerHTML = `<p style="color:var(--accent-red);">Network error loading results: ${escapeHtml(err.message)}</p>`;
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            resetQuizBuilder();
+        });
 
         const LANG_LOCALE_MAP = {
             'en': 'en-US',

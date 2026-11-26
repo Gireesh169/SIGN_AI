@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import json
 import base64
@@ -622,71 +623,377 @@ def review_response_endpoint():
 # ---------------------------------------------------------------------------
 # QUIZ & ASSESSMENT REST & SOCKET APIS
 # ---------------------------------------------------------------------------
+VALID_QUIZ_QUESTION_TYPES = {'mcq', 'text', 'sign'}
+VALID_QUIZ_RESPONSE_MODES = {'mcq', 'text', 'sign', 'speech'}
+
+
+def _normalize_quiz_answer(value):
+    return re.sub(r'\s+', ' ', str(value or '').strip()).lower()
+
+
+def _evaluate_quiz_question(question, response_text):
+    points = max(1, int(question.get('points') or 1))
+    correct_answer = _normalize_quiz_answer(question.get('correct_answer', ''))
+    student_answer = _normalize_quiz_answer(response_text)
+    if not correct_answer:
+        return 0, 0
+    is_correct = 1 if student_answer == correct_answer else 0
+    score = points if is_correct else 0
+    return is_correct, score
+
+
 @app.route('/api/quiz/create', methods=['POST'])
 def create_quiz_endpoint():
-    data = request.json or {}
-    room_code = data.get('room_code')
-    teacher_name = data.get('teacher_name', 'Teacher')
-    title = data.get('title', '').strip()
-    description = data.get('description', '').strip()
-    duration_minutes = int(data.get('duration_minutes', 10))
+    data = request.get_json(silent=True) or {}
+    room_code = str(data.get('room_code', '')).strip().upper()
+    teacher_name = str(data.get('teacher_name', 'Teacher')).strip() or 'Teacher'
+    title = str(data.get('title', '')).strip()
+    description = str(data.get('description', '')).strip()
     questions_input = data.get('questions', [])
 
     if not room_code or not title:
         return jsonify({'error': 'Missing room_code or quiz title', 'status': 'failed'}), 400
 
-    quiz = db.create_quiz(room_code, teacher_name, title, description, duration_minutes)
-    for q in questions_input:
-        q_text = q.get('question_text', '').strip()
-        q_type = q.get('question_type', 'mcq')
-        opts = json.dumps(q.get('options', []))
-        ans = q.get('correct_answer', '').strip()
-        pts = int(q.get('points', 1))
-        if q_text:
-            db.add_quiz_question(quiz['quiz_id'], q_text, q_type, opts, ans, pts)
+    room = db.get_room(room_code)
+    if not room:
+        return jsonify({'error': 'Classroom not found', 'status': 'failed'}), 404
 
-    notif = db.create_notification(room_code, 'student', 'quiz', f'📝 New Quiz Available: {title}')
-    socketio.emit('quiz_created_broadcast', quiz, to=room_code)
-    socketio.emit('notification_broadcast', notif, to=room_code)
-    return jsonify({'status': 'success', 'quiz': quiz})
+    try:
+        duration_minutes = int(data.get('duration_minutes', 10))
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Duration must be a valid number of minutes', 'status': 'failed'}), 400
+
+    if duration_minutes < 1 or duration_minutes > 300:
+        return jsonify({'error': 'Duration must be between 1 and 300 minutes', 'status': 'failed'}), 400
+
+    if not isinstance(questions_input, list) or len(questions_input) == 0:
+        return jsonify({'error': 'Quiz must contain at least one question', 'status': 'failed'}), 400
+
+    validated_questions = []
+    for idx, q in enumerate(questions_input, start=1):
+        if not isinstance(q, dict):
+            return jsonify({'error': f'Invalid format for question #{idx}', 'status': 'failed'}), 400
+
+        q_text = str(q.get('question_text', '')).strip()
+        if not q_text:
+            return jsonify({'error': f'Question #{idx} text cannot be empty', 'status': 'failed'}), 400
+
+        q_type = str(q.get('question_type', 'mcq')).strip().lower()
+        if q_type not in VALID_QUIZ_QUESTION_TYPES:
+            return jsonify({'error': f'Question #{idx} has unsupported type "{q_type}"', 'status': 'failed'}), 400
+
+        try:
+            pts = int(q.get('points', 1))
+        except (TypeError, ValueError):
+            return jsonify({'error': f'Question #{idx} points must be a valid integer', 'status': 'failed'}), 400
+        if pts < 1 or pts > 100:
+            return jsonify({'error': f'Question #{idx} points must be between 1 and 100', 'status': 'failed'}), 400
+
+        raw_opts = q.get('options', [])
+        if isinstance(raw_opts, str):
+            raw_opts = [o.strip() for o in raw_opts.split(',') if o.strip()]
+        elif isinstance(raw_opts, list):
+            raw_opts = [str(o).strip() for o in raw_opts if str(o).strip()]
+        else:
+            raw_opts = []
+
+        ans = str(q.get('correct_answer', '')).strip()
+        if q_type == 'mcq':
+            # Deduplicate preserving order
+            dedup_opts = list(dict.fromkeys(raw_opts))
+            if len(dedup_opts) < 2:
+                return jsonify({'error': f'MCQ Question #{idx} must have at least 2 options', 'status': 'failed'}), 400
+            if not ans:
+                return jsonify({'error': f'MCQ Question #{idx} requires a correct answer', 'status': 'failed'}), 400
+            matching_opt = next((opt for opt in dedup_opts if _normalize_quiz_answer(opt) == _normalize_quiz_answer(ans)), None)
+            if not matching_opt:
+                return jsonify({'error': f'MCQ Question #{idx} correct answer must match one of its options', 'status': 'failed'}), 400
+            raw_opts = dedup_opts
+            ans = matching_opt
+        else:
+            raw_opts = []
+
+        validated_questions.append({
+            'question_text': q_text,
+            'question_type': q_type,
+            'options_json': json.dumps(raw_opts),
+            'correct_answer': ans,
+            'points': pts
+        })
+
+    try:
+        quiz = db.create_quiz(room_code, teacher_name, title, description, duration_minutes)
+        for vq in validated_questions:
+            db.add_quiz_question(
+                quiz['quiz_id'],
+                vq['question_text'],
+                vq['question_type'],
+                vq['options_json'],
+                vq['correct_answer'],
+                vq['points']
+            )
+        quiz['question_count'] = len(validated_questions)
+        quiz['total_marks'] = sum(vq['points'] for vq in validated_questions)
+
+        notif = db.create_notification(room_code, 'student', 'quiz', f'📝 New Quiz Available: {title}')
+        socketio.emit('quiz_created_broadcast', quiz, to=room_code)
+        socketio.emit('notification_broadcast', notif, to=room_code)
+        return jsonify({'status': 'success', 'quiz': quiz})
+    except Exception as exc:
+        logger.error('Error creating quiz in room %s: %s', room_code, exc, exc_info=True)
+        return jsonify({'error': 'Database error while creating quiz', 'status': 'failed'}), 500
+
 
 @app.route('/api/quizzes/<room_code>')
 def get_quizzes_endpoint(room_code):
-    quizzes = db.get_quizzes_by_room(room_code)
-    return jsonify({'quizzes': quizzes})
+    room_code = str(room_code or '').strip().upper()
+    room = db.get_room(room_code)
+    if not room:
+        return jsonify({'error': 'Classroom not found', 'quizzes': []}), 404
+    student_name = request.args.get('student_name', '').strip() or None
+    try:
+        quizzes = db.get_quizzes_by_room(room_code, student_name=student_name)
+        return jsonify({'quizzes': quizzes})
+    except Exception as exc:
+        logger.error('Error fetching quizzes for room %s: %s', room_code, exc, exc_info=True)
+        return jsonify({'error': 'Database error while loading quizzes', 'quizzes': []}), 500
+
 
 @app.route('/api/quiz/<quiz_id>')
 def get_quiz_detail_endpoint(quiz_id):
-    quiz = db.get_quiz_with_questions(quiz_id)
-    if not quiz:
-        return jsonify({'error': 'Quiz not found'}), 404
-    return jsonify(quiz)
+    try:
+        quiz = db.get_quiz_with_questions(quiz_id, include_answers=False)
+        if not quiz:
+            return jsonify({'error': 'Quiz not found', 'status': 'failed'}), 404
+
+        req_room = request.args.get('room_code', '').strip().upper()
+        if req_room and quiz['room_code'] != req_room:
+            return jsonify({'error': 'Quiz does not belong to this classroom', 'status': 'failed'}), 403
+
+        student_name = request.args.get('student_name', '').strip()
+        if student_name:
+            submission = db.get_student_quiz_submission(quiz_id, student_name)
+            quiz['student_submission'] = submission or {'submitted': False}
+
+        return jsonify(quiz)
+    except Exception as exc:
+        logger.error('Error fetching quiz %s: %s', quiz_id, exc, exc_info=True)
+        return jsonify({'error': 'Database error while loading quiz', 'status': 'failed'}), 500
+
 
 @app.route('/api/quiz/submit', methods=['POST'])
 def submit_quiz_endpoint():
-    data = request.json or {}
-    quiz_id = data.get('quiz_id')
-    question_id = data.get('question_id')
-    room_code = data.get('room_code')
-    student_name = data.get('student_name')
-    response_text = data.get('response', '').strip()
-    response_mode = data.get('response_mode', 'text')
-    confidence = float(data.get('confidence', 1.0))
-    correct_answer = data.get('correct_answer', '').strip()
+    data = request.get_json(silent=True) or {}
+    quiz_id = str(data.get('quiz_id', '')).strip()
+    room_code = str(data.get('room_code', '')).strip().upper()
+    student_name = str(data.get('student_name', '')).strip()
 
-    if not quiz_id or not question_id or not student_name or not response_text:
-        return jsonify({'error': 'Missing required fields', 'status': 'failed'}), 400
+    if not quiz_id or not room_code or not student_name:
+        return jsonify({'error': 'Missing quiz_id, room_code, or student_name', 'status': 'failed'}), 400
 
-    is_correct = 1 if (correct_answer and response_text.lower() == correct_answer.lower()) else 0
-    score = 1 if is_correct else 0
+    try:
+        room = db.get_room(room_code)
+        if not room:
+            return jsonify({'error': 'Classroom not found', 'status': 'failed'}), 404
 
-    resp_id = db.submit_quiz_response(quiz_id, question_id, room_code, student_name, response_text, response_mode, confidence, is_correct, score)
-    return jsonify({'status': 'success', 'response_id': resp_id, 'is_correct': is_correct, 'score': score})
+        if not db.is_room_member(room_code, student_name):
+            return jsonify({'error': 'Student is not enrolled in this classroom', 'status': 'failed'}), 403
+
+        quiz = db.get_quiz_with_questions(quiz_id, include_answers=True)
+        if not quiz:
+            return jsonify({'error': 'Quiz not found', 'status': 'failed'}), 404
+
+        if quiz['room_code'] != room_code:
+            return jsonify({'error': 'Quiz does not belong to this classroom', 'status': 'failed'}), 403
+
+        if quiz.get('status') != 'active':
+            return jsonify({'error': 'This quiz is no longer active', 'status': 'failed'}), 400
+
+        questions = quiz.get('questions', [])
+        if not questions:
+            return jsonify({'error': 'Quiz has no questions to answer', 'status': 'failed'}), 400
+
+        question_map = {int(q['id']): q for q in questions}
+        max_score = sum(max(1, int(q.get('points') or 1)) for q in questions)
+
+        # Support batch submission (preferred for full quiz submit) and single-question submission
+        answers_payload = data.get('answers')
+        if isinstance(answers_payload, list):
+            if len(answers_payload) == 0:
+                return jsonify({'error': 'No answers provided', 'status': 'failed'}), 400
+
+            seen_qids = set()
+            evaluated_answers = []
+            for entry in answers_payload:
+                if not isinstance(entry, dict):
+                    return jsonify({'error': 'Invalid answer entry format', 'status': 'failed'}), 400
+                try:
+                    qid = int(entry.get('question_id'))
+                except (TypeError, ValueError):
+                    return jsonify({'error': 'Invalid question_id in answers', 'status': 'failed'}), 400
+
+                if qid not in question_map:
+                    return jsonify({'error': f'Question {qid} does not belong to this quiz', 'status': 'failed'}), 400
+                if qid in seen_qids:
+                    return jsonify({'error': f'Duplicate answer for question {qid}', 'status': 'failed'}), 400
+                seen_qids.add(qid)
+
+                resp_text = str(entry.get('response', '')).strip()
+                if not resp_text:
+                    return jsonify({'error': f'Answer for question {qid} cannot be empty', 'status': 'failed'}), 400
+
+                resp_mode = str(entry.get('response_mode', question_map[qid].get('question_type', 'text'))).strip().lower()
+                if resp_mode not in VALID_QUIZ_RESPONSE_MODES:
+                    resp_mode = 'text'
+
+                try:
+                    conf = max(0.0, min(1.0, float(entry.get('confidence', 1.0))))
+                except (TypeError, ValueError):
+                    conf = 1.0
+
+                q_obj = question_map[qid]
+                is_correct, score = _evaluate_quiz_question(q_obj, resp_text)
+                evaluated_answers.append({
+                    'question_id': qid,
+                    'response': resp_text,
+                    'response_mode': resp_mode,
+                    'confidence': conf,
+                    'is_correct': is_correct,
+                    'score': score,
+                    'max_points': max(1, int(q_obj.get('points') or 1))
+                })
+
+            missing_qids = [qid for qid in question_map if qid not in seen_qids]
+            if missing_qids:
+                return jsonify({
+                    'error': 'Please answer all required questions before submitting.',
+                    'missing_question_ids': missing_qids,
+                    'status': 'failed'
+                }), 400
+
+            try:
+                batch_res = db.submit_quiz_responses_batch(quiz_id, room_code, student_name, evaluated_answers)
+            except ValueError:
+                return jsonify({'error': 'You have already submitted this quiz.', 'status': 'duplicate'}), 409
+
+            total_score = sum(item['score'] for item in evaluated_answers)
+            total_answered = len(evaluated_answers)
+            notif = db.create_notification(
+                room_code,
+                'teacher',
+                'quiz_submission',
+                f'📝 {student_name} submitted quiz "{quiz["title"]}" ({total_score}/{max_score})',
+                student_name=student_name
+            )
+            socketio.emit('quiz_submitted_broadcast', {
+                'quiz_id': quiz_id,
+                'room_code': room_code,
+                'student_name': student_name,
+                'total_score': total_score,
+                'max_score': max_score,
+                'total_answered': total_answered,
+                'total_questions': len(questions),
+                'submitted_at': batch_res['submitted_at']
+            }, to=room_code)
+            socketio.emit('notification_broadcast', notif, to=room_code)
+
+            return jsonify({
+                'status': 'success',
+                'submission_status': 'Submitted',
+                'quiz_id': quiz_id,
+                'room_code': room_code,
+                'student_name': student_name,
+                'total_score': total_score,
+                'max_score': max_score,
+                'total_answered': total_answered,
+                'total_questions': len(questions),
+                'percentage': round((total_score / max_score) * 100.0, 1) if max_score > 0 else 0.0,
+                'submitted_at': batch_res['submitted_at'],
+                'results': [{
+                    'question_id': item['question_id'],
+                    'response': item['response'],
+                    'response_mode': item['response_mode'],
+                    'is_correct': item['is_correct'],
+                    'score': item['score'],
+                    'max_points': item['max_points']
+                } for item in evaluated_answers]
+            })
+
+        # Single-question submission fallback
+        try:
+            question_id = int(data.get('question_id'))
+        except (TypeError, ValueError):
+            return jsonify({'error': 'Missing or invalid question_id', 'status': 'failed'}), 400
+
+        if question_id not in question_map:
+            return jsonify({'error': 'Question not found in this quiz', 'status': 'failed'}), 404
+
+        response_text = str(data.get('response', '')).strip()
+        if not response_text:
+            return jsonify({'error': 'Response cannot be empty', 'status': 'failed'}), 400
+
+        response_mode = str(data.get('response_mode', 'text')).strip().lower()
+        if response_mode not in VALID_QUIZ_RESPONSE_MODES:
+            response_mode = 'text'
+
+        try:
+            confidence = max(0.0, min(1.0, float(data.get('confidence', 1.0))))
+        except (TypeError, ValueError):
+            confidence = 1.0
+
+        q_obj = question_map[question_id]
+        is_correct, score = _evaluate_quiz_question(q_obj, response_text)
+        max_points = max(1, int(q_obj.get('points') or 1))
+
+        try:
+            resp_id = db.submit_quiz_response(
+                quiz_id, question_id, room_code, student_name,
+                response_text, response_mode, confidence, is_correct, score
+            )
+        except ValueError:
+            return jsonify({'error': 'Duplicate submission for this question', 'status': 'duplicate'}), 409
+
+        socketio.emit('quiz_submitted_broadcast', {
+            'quiz_id': quiz_id,
+            'room_code': room_code,
+            'student_name': student_name
+        }, to=room_code)
+
+        return jsonify({
+            'status': 'success',
+            'submission_status': 'Submitted',
+            'response_id': resp_id,
+            'is_correct': is_correct,
+            'score': score,
+            'max_points': max_points
+        })
+    except Exception as exc:
+        logger.error('Error submitting quiz %s: %s', quiz_id, exc, exc_info=True)
+        return jsonify({'error': 'Database error while submitting quiz', 'status': 'failed'}), 500
+
 
 @app.route('/api/quiz/results/<quiz_id>')
 def get_quiz_results_endpoint(quiz_id):
-    results = db.get_quiz_results(quiz_id)
-    return jsonify({'results': results})
+    try:
+        quiz = db.get_quiz_with_questions(quiz_id, include_answers=False)
+        if not quiz:
+            return jsonify({'error': 'Quiz not found', 'results': []}), 404
+        results = db.get_quiz_results(quiz_id)
+        return jsonify({
+            'quiz': {
+                'quiz_id': quiz['quiz_id'],
+                'room_code': quiz['room_code'],
+                'title': quiz['title'],
+                'duration_minutes': quiz['duration_minutes'],
+                'total_questions': quiz['question_count'],
+                'total_marks': quiz['total_marks'],
+                'status': quiz['status']
+            },
+            'results': results
+        })
+    except Exception as exc:
+        logger.error('Error fetching quiz results for %s: %s', quiz_id, exc, exc_info=True)
+        return jsonify({'error': 'Database error while loading quiz results', 'results': []}), 500
 
 # ---------------------------------------------------------------------------
 # CLASSROOM CONTENT MANAGEMENT REST APIS
