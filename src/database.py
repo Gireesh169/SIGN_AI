@@ -969,24 +969,88 @@ class ClassroomDatabase:
         conn.close()
         return q_id
 
-    def get_quizzes_by_room(self, room_code):
+    def is_room_member(self, room_code, student_name):
+        if not room_code or not student_name:
+            return False
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT quiz_id, room_code, teacher_name, title, description, duration_minutes, status, created_at FROM quizzes WHERE room_code = ? ORDER BY created_at DESC", (room_code,))
-        rows = cursor.fetchall()
+        cursor.execute(
+            "SELECT 1 FROM room_members WHERE room_code = ? AND LOWER(TRIM(student_name)) = LOWER(TRIM(?)) LIMIT 1",
+            (room_code, student_name)
+        )
+        row = cursor.fetchone()
         conn.close()
-        return [{
-            'quiz_id': r[0],
-            'room_code': r[1],
-            'teacher_name': r[2],
-            'title': r[3],
-            'description': r[4],
-            'duration_minutes': r[5],
-            'status': r[6],
-            'created_at': r[7]
-        } for r in rows]
+        return row is not None
 
-    def get_quiz_with_questions(self, quiz_id):
+    def get_quizzes_by_room(self, room_code, student_name=None):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT
+                q.quiz_id,
+                q.room_code,
+                q.teacher_name,
+                q.title,
+                q.description,
+                q.duration_minutes,
+                q.status,
+                q.created_at,
+                COUNT(qq.id) AS question_count,
+                COALESCE(SUM(qq.points), 0) AS total_marks
+            FROM quizzes q
+            LEFT JOIN quiz_questions qq ON q.quiz_id = qq.quiz_id
+            WHERE q.room_code = ?
+            GROUP BY q.quiz_id
+            ORDER BY q.created_at DESC
+        ''', (room_code,))
+        rows = cursor.fetchall()
+
+        quizzes = []
+        for r in rows:
+            quiz_id = r[0]
+            question_count = int(r[8] or 0)
+            total_marks = int(r[9] or 0)
+
+            cursor.execute(
+                "SELECT COUNT(DISTINCT LOWER(TRIM(student_name))) FROM quiz_responses WHERE quiz_id = ?",
+                (quiz_id,)
+            )
+            submission_count = int(cursor.fetchone()[0] or 0)
+
+            item = {
+                'quiz_id': quiz_id,
+                'room_code': r[1],
+                'teacher_name': r[2],
+                'title': r[3],
+                'description': r[4],
+                'duration_minutes': r[5],
+                'status': r[6],
+                'created_at': r[7],
+                'question_count': question_count,
+                'total_marks': total_marks,
+                'submission_count': submission_count
+            }
+
+            if student_name:
+                cursor.execute('''
+                    SELECT COUNT(DISTINCT question_id), COALESCE(SUM(score), 0), MAX(submitted_at)
+                    FROM quiz_responses
+                    WHERE quiz_id = ? AND LOWER(TRIM(student_name)) = LOWER(TRIM(?))
+                ''', (quiz_id, student_name))
+                s_row = cursor.fetchone()
+                answered_cnt = int(s_row[0] or 0)
+                student_score = int(s_row[1] or 0)
+                item['student_answered_count'] = answered_cnt
+                item['student_submitted'] = answered_cnt > 0
+                item['student_score'] = student_score
+                item['student_submitted_at'] = s_row[2]
+
+            quizzes.append(item)
+
+        conn.close()
+        return quizzes
+
+    def get_quiz_with_questions(self, quiz_id, include_answers=False):
         conn = self._get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT quiz_id, room_code, teacher_name, title, description, duration_minutes, status, created_at FROM quizzes WHERE quiz_id = ?", (quiz_id,))
@@ -994,13 +1058,14 @@ class ClassroomDatabase:
         if not qz:
             conn.close()
             return None
-        
+
         cursor.execute("SELECT id, question_text, question_type, options_json, correct_answer, points FROM quiz_questions WHERE quiz_id = ? ORDER BY id ASC", (quiz_id,))
         qs = cursor.fetchall()
         conn.close()
 
         import json
         questions_list = []
+        total_marks = 0
         for q in qs:
             opts = []
             if q[3]:
@@ -1008,14 +1073,18 @@ class ClassroomDatabase:
                     opts = json.loads(q[3])
                 except Exception:
                     opts = []
-            questions_list.append({
+            pts = int(q[5] if q[5] is not None else 1)
+            total_marks += pts
+            q_dict = {
                 'id': q[0],
                 'question_text': q[1],
                 'question_type': q[2],
                 'options': opts,
-                'correct_answer': q[4],
-                'points': q[5]
-            })
+                'points': pts
+            }
+            if include_answers:
+                q_dict['correct_answer'] = q[4] or ''
+            questions_list.append(q_dict)
 
         return {
             'quiz_id': qz[0],
@@ -1026,40 +1095,170 @@ class ClassroomDatabase:
             'duration_minutes': qz[5],
             'status': qz[6],
             'created_at': qz[7],
+            'question_count': len(questions_list),
+            'total_marks': total_marks,
             'questions': questions_list
         }
+
+    def get_student_quiz_submission(self, quiz_id, student_name):
+        """Returns a student's existing submission summary for a quiz without exposing answer keys."""
+        if not quiz_id or not student_name:
+            return None
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            SELECT qr.question_id, qr.response, qr.response_mode, qr.confidence, qr.is_correct, qr.score, qr.submitted_at, qq.question_text, qq.points
+            FROM quiz_responses qr
+            JOIN quiz_questions qq ON qr.question_id = qq.id
+            WHERE qr.quiz_id = ? AND LOWER(TRIM(qr.student_name)) = LOWER(TRIM(?))
+            ORDER BY qr.question_id ASC
+        ''', (quiz_id, student_name))
+        rows = cursor.fetchall()
+        conn.close()
+        if not rows:
+            return None
+
+        total_score = sum(int(r[5] or 0) for r in rows)
+        return {
+            'submitted': True,
+            'total_answered': len(rows),
+            'total_score': total_score,
+            'submitted_at': max(r[6] for r in rows),
+            'responses': [{
+                'question_id': r[0],
+                'response': r[1],
+                'response_mode': r[2],
+                'confidence': float(r[3] or 1.0),
+                'is_correct': int(r[4] or 0),
+                'score': int(r[5] or 0),
+                'max_points': int(r[8] if r[8] is not None else 1),
+                'question_text': r[7]
+            } for r in rows]
+        }
+
+    def has_student_submitted_question(self, quiz_id, question_id, student_name):
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT id FROM quiz_responses WHERE quiz_id = ? AND question_id = ? AND LOWER(TRIM(student_name)) = LOWER(TRIM(?)) LIMIT 1",
+            (quiz_id, question_id, student_name)
+        )
+        row = cursor.fetchone()
+        conn.close()
+        return row is not None
 
     def submit_quiz_response(self, quiz_id, question_id, room_code, student_name, response, response_mode='text', confidence=1.0, is_correct=0, score=0):
         submitted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         conn = self._get_connection()
         cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO quiz_responses (quiz_id, question_id, room_code, student_name, response, response_mode, confidence, is_correct, score, submitted_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ''', (quiz_id, question_id, room_code, student_name, response, response_mode, float(confidence), int(is_correct), int(score), submitted_at))
-        resp_id = cursor.lastrowid
-        conn.commit()
-        conn.close()
-        return resp_id
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+            cursor.execute(
+                "SELECT id FROM quiz_responses WHERE quiz_id = ? AND question_id = ? AND LOWER(TRIM(student_name)) = LOWER(TRIM(?)) LIMIT 1",
+                (quiz_id, question_id, student_name)
+            )
+            if cursor.fetchone():
+                conn.rollback()
+                conn.close()
+                raise ValueError("Duplicate submission for this question")
+
+            cursor.execute('''
+                INSERT INTO quiz_responses (quiz_id, question_id, room_code, student_name, response, response_mode, confidence, is_correct, score, submitted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ''', (quiz_id, question_id, room_code, student_name, response, response_mode, float(confidence), int(is_correct), int(score), submitted_at))
+            resp_id = cursor.lastrowid
+            conn.commit()
+            conn.close()
+            return resp_id
+        except Exception:
+            conn.close()
+            raise
+
+    def submit_quiz_responses_batch(self, quiz_id, room_code, student_name, evaluated_answers):
+        """Atomically stores a student's complete quiz attempt and prevents duplicate submissions."""
+        submitted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self._get_connection()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("BEGIN IMMEDIATE")
+            q_ids = [int(item['question_id']) for item in evaluated_answers]
+            placeholders = ','.join('?' for _ in q_ids)
+            cursor.execute(
+                f"SELECT question_id FROM quiz_responses WHERE quiz_id = ? AND LOWER(TRIM(student_name)) = LOWER(TRIM(?)) AND question_id IN ({placeholders}) LIMIT 1",
+                [quiz_id, student_name] + q_ids
+            )
+            if cursor.fetchone():
+                conn.rollback()
+                conn.close()
+                raise ValueError("Duplicate submission for this quiz")
+
+            saved_ids = []
+            for item in evaluated_answers:
+                cursor.execute('''
+                    INSERT INTO quiz_responses (quiz_id, question_id, room_code, student_name, response, response_mode, confidence, is_correct, score, submitted_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ''', (
+                    quiz_id,
+                    int(item['question_id']),
+                    room_code,
+                    student_name,
+                    item['response'],
+                    item.get('response_mode', 'text'),
+                    float(item.get('confidence', 1.0)),
+                    int(item['is_correct']),
+                    int(item['score']),
+                    submitted_at
+                ))
+                saved_ids.append(cursor.lastrowid)
+
+            conn.commit()
+            conn.close()
+            return {'response_ids': saved_ids, 'submitted_at': submitted_at}
+        except Exception:
+            conn.close()
+            raise
 
     def get_quiz_results(self, quiz_id):
         conn = self._get_connection()
         cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(id), COALESCE(SUM(points), 0) FROM quiz_questions WHERE quiz_id = ?", (quiz_id,))
+        q_meta = cursor.fetchone()
+        total_questions = int(q_meta[0] or 0)
+        total_marks = int(q_meta[1] or 0)
+
         cursor.execute('''
-            SELECT student_name, SUM(score) as total_score, COUNT(id) as total_answered, AVG(confidence) as avg_conf
+            SELECT
+                student_name,
+                COALESCE(SUM(score), 0) as total_score,
+                COUNT(DISTINCT question_id) as total_answered,
+                AVG(confidence) as avg_conf,
+                MAX(submitted_at) as last_submitted_at
             FROM quiz_responses
             WHERE quiz_id = ?
-            GROUP BY student_name
-            ORDER BY total_score DESC
+            GROUP BY LOWER(TRIM(student_name))
+            ORDER BY total_score DESC, last_submitted_at ASC
         ''', (quiz_id,))
         rows = cursor.fetchall()
         conn.close()
-        return [{
-            'student_name': r[0],
-            'total_score': r[1],
-            'total_answered': r[2],
-            'avg_confidence': round(float(r[3] or 1.0) * 100.0, 1)
-        } for r in rows]
+
+        results = []
+        for r in rows:
+            total_score = int(r[1] or 0)
+            total_answered = int(r[2] or 0)
+            status = 'Submitted' if (total_questions > 0 and total_answered >= total_questions) else 'Partial'
+            pct = round((total_score / total_marks) * 100.0, 1) if total_marks > 0 else 0.0
+            results.append({
+                'student_name': r[0],
+                'total_score': total_score,
+                'total_marks': total_marks,
+                'total_answered': total_answered,
+                'total_questions': total_questions,
+                'percentage': pct,
+                'submission_status': status,
+                'avg_confidence': round(float(r[3] or 1.0) * 100.0, 1),
+                'submitted_at': r[4]
+            })
+        return results
 
     # =========================================================================
     # 6. CLASSROOM CONTENT MATERIALS
