@@ -103,7 +103,7 @@ class TTSEngineWorker:
 SLIDING_WINDOW_SIZE = 30       # Landmark sequence length per inference window
 HISTORY_MAX_LEN = 5           # Size of rolling prediction history buffer
 REQUIRED_VOTES = 2            # Minimum matching predictions required for temporal consensus
-CONFIDENCE_THRESHOLD = 0.35   # Minimum Top-1 probability (35%) to accept a prediction
+CONFIDENCE_THRESHOLD = 0.40   # Minimum Top-1 probability (40%) to accept a prediction
 PROB_MARGIN_THRESHOLD = 0.08  # Minimum difference between Top-1 and Top-2 probabilities
 SPEECH_COOLDOWN_SEC = 2.5     # Cooldown interval (in seconds) between spoken sentences
 UNCERTAIN_FALLBACK_TEXT = "Not confident. Please repeat the sign."
@@ -492,4 +492,3 @@ class RealTimeInferenceEngine:
             self.hands_detector.close()
         if self.tts:
             self.tts.stop()
-

@@ -344,4 +344,36 @@ python3 src/test_multilingual_system.py
 python3 app.py
 ```
 
-Open `http://localhost:5000` in your web browser.
+### Optional AI assistant configuration
+
+The classroom assistant is server-side and disabled by default. To enable it,
+set `LLM_API_URL`, `LLM_API_KEY`, and `LLM_MODEL` in a local `.env` or the
+deployment environment. Gemini `generateContent` URLs are supported directly, including Gemini's
+`contents` payload and `x-goog-api-key` authentication;
+the endpoint accepts `explain`, `summarize`, `quiz`,
+`answer`, `translate`, `steps`, and `revision` actions plus lesson content.
+The key is never sent to the browser. If these variables are absent or the
+provider is unavailable, translation, text responses, speech fallback, and
+sign confirmation continue to work.
+
+Voice recognition uses the browser Web Speech API when available. Select
+English, Hindi, or Telugu in the teaching-language control, review the editable
+transcript, and broadcast only after correction. Microphone denial and
+unsupported browsers retain the text-input fallback. Browser TTS controls are
+available for supported voices, rate, and volume.
+
+### Validation
+
+```bash
+venv/bin/python -m pytest -q
+venv/bin/python -m py_compile app.py src/ai_assistant.py src/realtime_engine.py
+node --check static/script.js
+```
+
+ISL predictions are intentionally not auto-submitted: the UI requires a stable
+prediction, explicit append/confirmation, and final review. Confidence is the
+model probability and temporal/margin signal, not a calibrated accuracy
+guarantee. The current deployed checkpoint remains `models/best_model_252.pth`;
+model-improvement claims require a fixed signer-independent evaluation split.
+
+Open `http://localhost:5001` in your web browser (or the `PORT` configured by your deployment).

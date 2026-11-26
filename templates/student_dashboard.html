@@ -17,7 +17,6 @@
         .cam-container { width: 100%; max-width: 540px; margin: 0 auto; }
         .cam-guide-text { font-size: 0.85rem; color: var(--text-muted); text-align: center; margin-bottom: 0.6rem; font-weight: 500; }
         .cam-wrapper {
-<<<<<<< HEAD
             position: relative;
             width: 100%;
             max-width: 500px;
@@ -28,11 +27,9 @@
             overflow: hidden;
             border: 1px solid rgba(255, 255, 255, 0.15);
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
-=======
             position: relative; width: 100%; height: 320px; margin: 0 auto;
             background: #0f172a; border-radius: 0.75rem; overflow: hidden; border: 1px solid var(--border-color);
             box-shadow: var(--shadow-md);
->>>>>>> 52486abcac0ee7b34dbb38839bc2c707a13fa6e1
         }
         #webcam, #output_canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: cover; border-radius: 0.75rem; }
         #output_canvas { pointer-events: none; z-index: 6; }
@@ -44,7 +41,6 @@
             position: absolute; top: 0.75rem; left: 0.75rem; display: none; align-items: center; gap: 0.4rem;
             background: rgba(255,255,255,0.92); backdrop-filter: blur(6px); padding: 0.35rem 0.8rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; color: var(--text-main); border: 1px solid var(--border-color); z-index: 10;
         }
-<<<<<<< HEAD
         .dot-indicator {
             width: 8px; height: 8px;
             border-radius: 50%;
@@ -120,14 +116,12 @@
             transition: all 0.2s;
         }
         .debug-toggle-btn:hover { color: #94a3b8; border-color: #475569; }
-=======
         .top-cand-card { background: #ffffff; border: 1px solid var(--border-color); padding: 0.5rem 0.8rem; border-radius: 0.5rem; flex: 1; cursor: pointer; transition: all 0.2s; text-align: center; font-size: 0.85rem; color: var(--text-main); word-break: break-word; }
         .top-cand-card:hover { border-color: var(--primary-color); background: var(--primary-light); }
         .sent-word-pill { background: var(--primary-color); color: #fff; padding: 0.3rem 0.77rem; border-radius: 999px; font-weight: 700; font-size: 0.85rem; display: inline-flex; align-items: center; gap: 0.4rem; word-break: break-word; }
         .word-break { word-break: break-word; overflow-wrap: anywhere; }
         .progress-bar-container { width: 100%; background: #e2e8f0; height: 10px; border-radius: 5px; overflow: hidden; margin-top: 0.5rem; }
         .progress-bar-fill { height: 100%; background: linear-gradient(90deg, #2563eb, #166534); width: 0%; transition: width 0.2s ease; }
->>>>>>> 52486abcac0ee7b34dbb38839bc2c707a13fa6e1
     </style>
 </head>
 <body>
@@ -240,25 +234,16 @@
 
             <div class="accessible-teacher-box">
                 <label>SPOKEN RESPONSE TRANSCRIPTION:</label>
-                <div class="word-break" id="student-voice-transcript" style="font-size: 1.2rem; font-weight: 700; color: var(--text-main);">"Click 'Start Speaking' and speak your answer..."</div>
+                <textarea id="student-voice-transcript" aria-label="Editable spoken response transcript" rows="3" style="width:100%; padding:0.6rem; font-size:1.2rem; font-weight:700; color:var(--text-main);">Click 'Start Speaking' and speak your answer...</textarea>
             </div>
         </div>
 
         <!-- TEXT RESPONSE PANEL -->
         <div id="text-response-panel" class="glass-card" style="padding: 1.5rem; margin-bottom: 1.5rem; display: none;">
-<<<<<<< HEAD
-            <h4 style="color: #38bdf8; margin-top:0;">⌨ Text Response Mode</h4>
-            <p style="font-size: 0.85rem; color: #94a3b8; margin-bottom: 1rem;">Type your response in your preferred language. It will be translated automatically into Teacher Language.</p>
-
-            <div style="display: flex; gap: 0.8rem; align-items: center;">
-                <input type="text" id="text-answer-input" class="form-control" placeholder="Type your answer here..." style="background: #1e293b; color: #fff; font-size: 1.05rem;">
-                <button class="btn btn-primary" onclick="sendTextAnswer()">✓ Send Text Answer</button>
-=======
             <h4 style="color: var(--primary-color); margin-top:0;">⌨ Text Response Mode</h4>
             <div style="display: flex; gap: 0.8rem; align-items: center; flex-wrap: wrap;">
                 <input type="text" id="text-answer-input" class="form-control" placeholder="Type your response here..." style="background: #ffffff; color: var(--text-main); font-size: 1.05rem; flex: 1;">
                 <button class="btn btn-primary" onclick="sendTextAnswer()">✓ Submit Text Answer</button>
->>>>>>> 52486abcac0ee7b34dbb38839bc2c707a13fa6e1
             </div>
         </div>
 
@@ -694,7 +679,10 @@
             ctx.restore();
 
             // Manage 30-frame sequence buffer
-            if (handsDetected > 0) {
+            const frameHasUsableLandmarks = handsDetected > 0
+                && [...leftHand, ...rightHand].every(Number.isFinite)
+                && Math.max(...[...leftHand, ...rightHand].map(Math.abs)) > 0.001;
+            if (frameHasUsableLandmarks) {
                 const frame126 = leftHand.concat(rightHand);
                 landmarkBuffer.push(frame126);
                 if (landmarkBuffer.length > 30) landmarkBuffer.shift();
@@ -803,11 +791,7 @@
                 setRecognitionState('LOW_CONFIDENCE', 30, pred, conf);
             } else {
                 setRecognitionState('PREDICTED', 30, pred, conf);
-                // Auto-append stable predictions to sentence builder
-                if (!sentenceWords.includes(pred)) {
-                    sentenceWords.push(pred);
-                    renderSentenceBuffer();
-                }
+                // The student must explicitly append and confirm a prediction.
             }
 
             // Render Top-3 Predictions Breakdown
@@ -914,7 +898,8 @@
         }
 
         function sendVoiceAnswer() {
-            if (!studentSpokenText) return alert("Please speak your answer first.");
+            studentSpokenText = document.getElementById('student-voice-transcript').value.trim();
+            if (!studentSpokenText || studentSpokenText.includes("Click 'Start")) return alert("Please review or enter your answer first.");
             socket.emit('student_answer_event', {
                 question_id: activeQuestionId || 'Q-GENERAL',
                 room_code: ROOM_CODE,
@@ -1058,8 +1043,8 @@
                     if (event.results[i].isFinal) finalStr += event.results[i][0].transcript;
                 }
                 if (finalStr.trim().length > 0) {
-                    studentSpokenText = finalStr;
-                    document.getElementById('student-voice-transcript').textContent = `"${finalStr}"`;
+                    studentSpokenText = `${studentSpokenText} ${finalStr}`.trim();
+                    document.getElementById('student-voice-transcript').value = studentSpokenText;
                 }
             };
         }
@@ -1069,7 +1054,12 @@
             const btn = document.getElementById('btn-student-mic');
             if (!isStudentSpeaking) {
                 studentSpeechRecognition.lang = getLangLocale(selectedLanguage);
-                studentSpeechRecognition.start();
+                studentSpokenText = '';
+                document.getElementById('student-voice-transcript').value = '';
+                try { studentSpeechRecognition.start(); } catch (error) {
+                    document.getElementById('student-voice-transcript').value = 'Microphone could not start. Type your response instead.';
+                    return;
+                }
                 isStudentSpeaking = true;
                 btn.className = "btn btn-danger"; btn.innerText = "🛑 Stop Mic";
             } else {

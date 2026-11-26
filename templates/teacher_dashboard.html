@@ -165,7 +165,35 @@
                                 <span style="font-size: 0.8rem; color: #94a3b8;" id="active-question-id-tag">CURRENT QUESTION: Active</span>
                             </div>
                         </div>
-                        <div class="accessible-text" id="teacher-live-transcript">"Click 'START SPEECH' and speak, or type question below."</div>
+
+                        <div class="glass-card" style="padding:1rem; margin-bottom:1.5rem;" aria-labelledby="assistant-heading">
+                            <h4 id="assistant-heading" style="color:var(--primary-color); margin-top:0;">✨ Optional Classroom Assistant</h4>
+                            <p style="font-size:0.8rem; color:var(--text-muted);">Uses only the lesson content you provide. It is disabled safely when no server-side LLM key is configured.</p>
+                            <textarea id="assistant-lesson-content" rows="3" placeholder="Paste lesson content or teacher notes..." style="width:100%; padding:0.6rem; border:1px solid #cbd5e1; border-radius:0.4rem;"></textarea>
+                            <div style="display:flex; gap:0.5rem; margin-top:0.5rem; flex-wrap:wrap;">
+                                <select id="assistant-action" style="padding:0.4rem;">
+                                    <option value="explain">Explain simply</option>
+                                    <option value="summarize">Summarize</option>
+                                    <option value="quiz">Generate quiz</option>
+                                    <option value="steps">Make short steps</option>
+                                    <option value="revision">Revision notes</option>
+                                    <option value="answer">Answer question</option>
+                                    <option value="translate">Translate explanation</option>
+                                </select>
+                                <input id="assistant-question" placeholder="Optional student question" style="flex:1; min-width:180px; padding:0.4rem;">
+                                <button class="btn btn-secondary" onclick="runClassroomAssistant()">Ask assistant</button>
+                            </div>
+                            <div id="assistant-result" role="status" style="white-space:pre-wrap; margin-top:0.7rem; color:var(--text-main);"></div>
+                        </div>
+                        <textarea id="teacher-live-transcript" aria-label="Editable original teacher transcript" rows="3" style="width:100%; padding:0.7rem; background:#fff; color:#0f172a; border:1px solid #cbd5e1; border-radius:0.4rem; font-size:1.05rem;">Click 'START SPEECH' and speak, or type question below.</textarea>
+                        <div style="display:flex; gap:0.6rem; align-items:center; margin-top:0.6rem; flex-wrap:wrap;">
+                            <span id="teacher-mic-status" role="status" style="font-size:0.8rem; color:#94a3b8;">Microphone ready. Review the transcript before broadcasting.</span>
+                            <label style="font-size:0.8rem; color:#94a3b8;">Voice
+                                <select id="teacher-voice-select" style="margin-left:0.2rem; padding:0.2rem;"><option value="">System default</option></select>
+                            </label>
+                            <label style="font-size:0.8rem; color:#94a3b8;">Speed <input id="teacher-speech-rate" type="range" min="0.5" max="1.5" step="0.1" value="0.9"></label>
+                            <label style="font-size:0.8rem; color:#94a3b8;">Volume <input id="teacher-speech-volume" type="range" min="0" max="1" step="0.1" value="1"></label>
+                        </div>
                     </div>
 
                     <!-- INCOMING STUDENT RESPONSES PANEL -->
@@ -429,13 +457,13 @@
                 source_language: teacherLanguage,
                 timer_seconds: timer
             });
-            document.getElementById('teacher-live-transcript').innerText = `"${text}"`;
+            document.getElementById('teacher-live-transcript').value = text;
             document.getElementById('customQuestionText').value = '';
             showToast(`Question broadcasted: "${text}"`, 'Question Broadcasted');
         }
 
         function broadcastCurrentSpeech() {
-            const text = document.getElementById('teacher-live-transcript').innerText.replace(/"/g, '').trim();
+            const text = document.getElementById('teacher-live-transcript').value.trim();
             if (!text || text.includes('Click')) return alert("No spoken message captured yet.");
 
             socket.emit('teacher_speech_event', {
@@ -454,7 +482,7 @@
                 teacher_name: TEACHER_NAME,
                 source_language: teacherLanguage
             });
-            document.getElementById('teacher-live-transcript').innerText = `"${text}"`;
+            document.getElementById('teacher-live-transcript').value = text;
             showToast(`Rebroadcasted: "${text}"`, 'Question Broadcasted');
         }
 
@@ -598,13 +626,54 @@
             window.speechSynthesis.cancel();
             const utterance = new SpeechSynthesisUtterance(text);
             utterance.lang = getLangLocale(langCode || teacherLanguage);
-            utterance.rate = 0.9;
+            utterance.rate = Number(document.getElementById('teacher-speech-rate')?.value || 0.9);
+            utterance.volume = Number(document.getElementById('teacher-speech-volume')?.value || 1);
+            const voiceName = document.getElementById('teacher-voice-select')?.value;
+            const voice = window.speechSynthesis.getVoices().find(item => item.name === voiceName);
+            if (voice) utterance.voice = voice;
             window.speechSynthesis.speak(utterance);
         }
 
         function listenTeacherLiveSpeech() {
-            const rawText = document.getElementById('teacher-live-transcript').innerText.replace(/"/g, '').trim();
+            const rawText = document.getElementById('teacher-live-transcript').value.trim();
             speakText(rawText, teacherLanguage);
+        }
+
+        async function runClassroomAssistant() {
+            const result = document.getElementById('assistant-result');
+            result.textContent = 'Working...';
+            try {
+                const response = await fetch('/api/assistant', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        action: document.getElementById('assistant-action').value,
+                        lesson_content: document.getElementById('assistant-lesson-content').value,
+                        question: document.getElementById('assistant-question').value,
+                        target_language: teacherLanguage
+                    })
+                });
+                const data = await response.json();
+                result.textContent = data.answer || data.message || data.error || 'Assistant did not return a response.';
+            } catch (error) {
+                result.textContent = 'Assistant unavailable. Continue with the text and translation tools.';
+            }
+        }
+
+        function loadTeacherVoices() {
+            const select = document.getElementById('teacher-voice-select');
+            if (!select || !('speechSynthesis' in window)) return;
+            const selected = select.value;
+            select.innerHTML = '<option value="">System default</option>';
+            window.speechSynthesis.getVoices()
+                .filter(voice => voice.lang.toLowerCase().startsWith(getLangLocale(teacherLanguage).slice(0, 2)))
+                .forEach(voice => {
+                    const option = document.createElement('option');
+                    option.value = voice.name;
+                    option.textContent = `${voice.name} (${voice.lang})`;
+                    select.appendChild(option);
+                });
+            select.value = selected;
         }
 
         function onTeacherLangChange() {
@@ -614,6 +683,7 @@
             if (recognition) {
                 recognition.lang = getLangLocale(teacherLanguage);
             }
+            loadTeacherVoices();
             socket.emit('set_teacher_language_event', { room_code: ROOM_CODE, teacher_language: teacherLanguage });
             showToast(`Teaching language set to ${teacherLanguage.toUpperCase()}`, 'Language Updated');
         }
@@ -650,21 +720,36 @@
             container.prepend(item);
         }
 
-        // Speech Recognition
+        // Speech Recognition: interim text is visible and final text remains editable.
         let recognition = null;
         let isListening = false;
+        let finalTranscript = '';
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.continuous = true;
             recognition.interimResults = true;
             recognition.onresult = function(event) {
-                let finalStr = '';
+                let interimStr = '';
                 for (let i = event.resultIndex; i < event.results.length; ++i) {
-                    if (event.results[i].isFinal) finalStr += event.results[i][0].transcript;
+                    const transcript = event.results[i][0].transcript.trim();
+                    if (event.results[i].isFinal) finalTranscript += `${transcript} `;
+                    else interimStr += `${transcript} `;
                 }
-                if (finalStr.trim().length > 0) {
-                    document.getElementById('teacher-live-transcript').innerText = `"${finalStr}"`;
+                document.getElementById('teacher-live-transcript').value = `${finalTranscript}${interimStr}`.trim();
+                document.getElementById('teacher-mic-status').textContent = interimStr ? 'Listening (interim words shown)...' : 'Listening...';
+            };
+            recognition.onerror = function(event) {
+                document.getElementById('teacher-mic-status').textContent = event.error === 'not-allowed'
+                    ? 'Microphone permission denied. Use the text box instead.'
+                    : `Microphone error: ${event.error}.`;
+            };
+            recognition.onend = function() {
+                isListening = false;
+                document.getElementById('btn-toggle-speech').className = "btn btn-primary";
+                document.getElementById('btn-toggle-speech').innerText = "🎙️ START SPEECH";
+                if (document.getElementById('teacher-mic-status').textContent.startsWith('Listening')) {
+                    document.getElementById('teacher-mic-status').textContent = 'Recognition stopped. Review the transcript before broadcasting.';
                 }
             };
         }
@@ -674,16 +759,23 @@
             const btn = document.getElementById('btn-toggle-speech');
             if (!isListening) {
                 recognition.lang = getLangLocale(teacherLanguage);
-                recognition.start();
+                finalTranscript = '';
+                document.getElementById('teacher-live-transcript').value = '';
+                try { recognition.start(); } catch (error) {
+                    document.getElementById('teacher-mic-status').textContent = 'Microphone could not start. Use the text box instead.';
+                    return;
+                }
                 isListening = true;
                 btn.className = "btn btn-danger";
                 btn.innerText = "🛑 STOP SPEECH";
             } else {
                 recognition.stop();
-                isListening = false;
-                btn.className = "btn btn-primary";
-                btn.innerText = "🎙️ START SPEECH";
             }
+        }
+
+        if ('speechSynthesis' in window) {
+            window.speechSynthesis.onvoiceschanged = loadTeacherVoices;
+            loadTeacherVoices();
         }
     </script>
 </body>

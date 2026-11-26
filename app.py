@@ -37,6 +37,7 @@ from src.offline_sync import get_sync_manager
 from src.curriculum_assistant import generate_bilingual_lesson, list_curriculum_options
 from src.worksheet_generator import generate_bilingual_worksheet, get_worksheet_by_id
 from src.flashcard_generator import generate_flashcards, get_available_flashcard_packs
+from src.ai_assistant import run_assistant
 
 # ---------------------------------------------------------------------------
 # Flask application setup
@@ -256,6 +257,19 @@ def translate_endpoint():
 
     result = translate(text, src_lang, target_lang)
     return jsonify(result)
+
+@app.route('/api/assistant', methods=['POST'])
+def classroom_assistant_endpoint():
+    """POST /api/assistant — Optional lesson-grounded assistant; keys stay server-side."""
+    data = request.json or {}
+    action = str(data.get('action', '')).strip().lower()
+    lesson_content = data.get('lesson_content', '')
+    question = data.get('question', '')
+    target_language = data.get('target_language', 'en')
+    if not isinstance(lesson_content, str) or not isinstance(question, str):
+        return jsonify({'status': 'failed', 'error': 'lesson_content and question must be text'}), 400
+    result, status_code = run_assistant(action, lesson_content, question, target_language)
+    return jsonify(result), status_code
 
 @app.route('/api/sync/status', methods=['GET'])
 def sync_status_endpoint():
@@ -857,6 +871,10 @@ def predict_sequence_endpoint():
         arr = np.array(sequence, dtype=np.float32)
         if arr.shape != (30, 126):
             raise ValueError(f'Shape mismatch: expected (30, 126), got {arr.shape}')
+        if not np.isfinite(arr).all():
+            raise ValueError('sequence contains non-finite landmark values')
+        if float(np.max(np.abs(arr))) <= 0.001:
+            raise ValueError('sequence contains no visible hand landmarks')
     except Exception as shape_err:
         logger.warning('predict_sequence: shape validation failed: %s', shape_err)
         return jsonify({'status': 'failed', 'error': f'Invalid sequence shape: {shape_err}'}), 400
